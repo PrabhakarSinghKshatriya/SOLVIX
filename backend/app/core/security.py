@@ -7,7 +7,6 @@ from app.config import settings
 
 
 password_hash = PasswordHash.recommended()
-
 ALGORITHM = "HS256"
 
 
@@ -22,8 +21,14 @@ def verify_password(password: str, password_hash_value: str) -> bool:
 def create_access_token(
     user_id: str,
     role: str,
-    expires_minutes: int = 60,
+    expires_minutes: int | None = None,
 ) -> str:
+    if expires_minutes is None:
+        expires_minutes = settings.jwt_access_token_expire_minutes
+
+    if expires_minutes <= 0:
+        raise ValueError("Token expiry must be greater than zero")
+
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=expires_minutes
     )

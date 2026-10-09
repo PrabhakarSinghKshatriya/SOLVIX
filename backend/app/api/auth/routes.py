@@ -25,6 +25,18 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import AuthService
 
+from datetime import datetime, timezone
+from typing import Literal
+
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+from pydantic import BaseModel
+
+from app.config import settings
+from app.database.connection import get_database
+from app.models.user import UserModel
+from pymongo.errors import DuplicateKeyError
+
 
 router = APIRouter(
     prefix="/api/auth",
@@ -87,6 +99,104 @@ async def login_user(data: LoginRequest):
         "access_token": access_token,
         "token_type": "bearer",
         "user": user,
+    }
+
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str
+    role: Literal["customer", "worker"] = "customer"
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(data: GoogleLoginRequest):
+    if not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google login is not configured. Set GOOGLE_CLIENT_ID in backend/.env.",
+        )
+
+    try:
+        claims = id_token.verify_oauth2_token(
+            data.credential,
+            google_requests.Request(),
+            settings.google_client_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google sign-in verification failed. Please try again.",
+        ) from exc
+
+    email = str(claims.get("email", "")).strip().lower()
+    google_sub = str(claims.get("sub", "")).strip()
+    name = str(claims.get("name", "")).strip()
+
+    if not email or not google_sub or claims.get("email_verified") is not True:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google account email could not be verified.",
+        )
+
+    users = get_database()[UserModel.collection_name]
+    user = users.find_one({"email": email})
+
+    if user is None:
+        now = datetime.now(timezone.utc)
+        document = {
+            "name": name or email.split("@")[0],
+            "email": email,
+            "phone": None,
+            "password_hash": None,
+            "role": data.role,
+            "google_sub": google_sub,
+            "is_active": True,
+            "is_verified": True,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        try:
+            result = users.insert_one(document)
+            document["_id"] = result.inserted_id
+            user = document
+        except DuplicateKeyError:
+            user = users.find_one({"email": email})
+            if user is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Could not create or retrieve the Google account.",
+                )
+
+    if not user.get("is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is disabled.",
+        )
+
+    # Link a verified Google identity to the existing email account.
+    if not user.get("google_sub"):
+        users.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "google_sub": google_sub,
+                    "is_verified": True,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+    user_data = UserModel.serialize(user)
+    access_token = create_access_token(
+        user_id=user_data["id"],
+        role=user_data["role"],
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user_data,
     }
 
 @router.get("/me")

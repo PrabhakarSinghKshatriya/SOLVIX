@@ -23,7 +23,7 @@
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; scroll-behavior: smooth; }
+html { min-width: 320px; scroll-behavior: auto; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 body, button, input, textarea, select { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 button, input, textarea, select { font-size: inherit; }

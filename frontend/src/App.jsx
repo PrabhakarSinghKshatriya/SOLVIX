@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import { GoogleLogin } from "@react-oauth/google";
 import "./App.css";
 
 const API_URL = (
@@ -241,6 +242,34 @@ function App() {
         saveSession(response.data.access_token, response.data.user);
         flashNotice("Welcome back to SOLVIX!");
       }
+    } catch (err) {
+      flashError(getError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    if (!credentialResponse?.credential) {
+      flashError("Google did not return a sign-in credential.");
+      return;
+    }
+
+    clearMessages();
+    setLoading(true);
+
+    try {
+      const response = await api.post("/api/auth/google", {
+        credential: credentialResponse.credential,
+        role: authForm.role,
+      });
+
+      if (!response.data?.access_token || !response.data?.user) {
+        throw new Error("The server did not return a valid login session.");
+      }
+
+      saveSession(response.data.access_token, response.data.user);
+      flashNotice("You are signed in to SOLVIX with Google!");
     } catch (err) {
       flashError(getError(err));
     } finally {
@@ -929,11 +958,11 @@ function App() {
               </div>
               <button className="text-button" onClick={() => setPage("services")}>View all services ↗</button>
             </div>
-            <ServiceCards />
+            {ServiceCards()}
           </section>
 
           <div className="dashboard-columns">
-            <LocationPanel />
+            {LocationPanel()}
             <section className="panel booking-panel">
               <span className="eyebrow">QUICK BOOKING</span>
               <h3>Tell us what you need</h3>
@@ -1060,6 +1089,18 @@ function App() {
           </button>
         </form>
 
+        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+          <div className="google-login-wrap" style={{ display: "flex", justifyContent: "center", margin: "18px 0" }}>
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => flashError("Google sign-in failed. Please try again.")}
+              text={authMode === "login" ? "signin_with" : "signup_with"}
+              shape="rectangular"
+              theme="outline"
+            />
+          </div>
+        )}
+
         <p className="auth-alternate">
           {authMode === "login" ? "New to SOLVIX?" : "Already have an account?"}
           <button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); clearMessages(); }}>
@@ -1077,7 +1118,7 @@ function App() {
       <span className="eyebrow">OUR CATEGORIES</span>
       <h1>Explore all services</h1>
       <p className="page-intro">Choose the service you need and find a professional near you.</p>
-      <ServiceCards />
+      {ServiceCards()}
     </section>
   );
 
@@ -1089,7 +1130,7 @@ function App() {
         <button className="btn btn-outline" onClick={() => findWorkers(selectedService)} disabled={loading}>Refresh results</button>
       </div>
       {workers.length ? (
-        <div className="worker-grid">{workers.map((worker, index) => <WorkerCard key={getWorkerId(worker) || index} worker={worker} />)}</div>
+        <div className="worker-grid">{workers.map((worker, index) => WorkerCard({ worker }))}</div>
       ) : (
         <div className="empty-state"><span>🔎</span><h3>No workers to display</h3><p>Try searching again or increase your radius.</p><button className="btn btn-primary" onClick={() => findWorkers(selectedService)} disabled={loading}>Search again</button></div>
       )}
@@ -1104,7 +1145,7 @@ function App() {
         <button className="btn btn-outline" onClick={user?.role === "worker" ? loadWorkerRequests : loadCustomerRequests} disabled={loading}>↻ Refresh</button>
       </div>
       {requests.length ? (
-        <div className="request-list">{requests.map((request, index) => <RequestCard key={getRequestId(request) || index} request={request} />)}</div>
+        <div className="request-list">{requests.map((request, index) => RequestCard({ request }))}</div>
       ) : (
         <div className="empty-state"><span>📋</span><h3>No requests yet</h3><p>Your service requests will appear here when available.</p>{user?.role === "customer" && <button className="btn btn-primary" onClick={() => setPage("book")}>Create a booking</button>}</div>
       )}
@@ -1149,7 +1190,7 @@ function App() {
       <span className="eyebrow">BOOK A PROFESSIONAL</span>
       <h1>What can we help you with?</h1>
       <p className="page-intro">Describe your service requirement and set your location.</p>
-      <LocationPanel />
+      {LocationPanel()}
       <form className="panel booking-form" onSubmit={createBooking}>
         <label>Service category
           <select value={booking.service} onChange={(e) => setBooking((old) => ({ ...old, service: e.target.value }))}>
@@ -1166,12 +1207,12 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Header />
+      {Header()}
 
       <main className="main-content">
-        <Notice />
+        {Notice()}
 
-        {page === "auth" && <AuthPage />}
+        {page === "auth" && AuthPage()}
 
         {page === "home" && (
           <>
@@ -1207,7 +1248,7 @@ function App() {
                 <div><span className="eyebrow">SERVICES FOR EVERYDAY LIFE</span><h2>What do you need help with?</h2><p>Explore the services available through SOLVIX.</p></div>
                 <button className="text-button" onClick={() => setPage("services")}>All categories ↗</button>
               </div>
-              <ServiceCards />
+              {ServiceCards()}
             </section>
 
             <section className="join-banner">
@@ -1217,12 +1258,12 @@ function App() {
           </>
         )}
 
-        {page === "dashboard" && <Dashboard />}
-        {page === "services" && <ServicesPage />}
-        {page === "workers" && <WorkersPage />}
-        {page === "requests" && <RequestsPage />}
-        {page === "profile" && <ProfilePage />}
-        {page === "book" && <BookingPage />}
+        {page === "dashboard" && Dashboard()}
+        {page === "services" && ServicesPage()}
+        {page === "workers" && WorkersPage()}
+        {page === "requests" && RequestsPage()}
+        {page === "profile" && ProfilePage()}
+        {page === "book" && BookingPage()}
 
         {loading && (
           <div className="loading-bar" role="status">

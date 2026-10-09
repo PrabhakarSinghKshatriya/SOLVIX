@@ -58,10 +58,8 @@ class AuthService:
         if not user:
             return None
 
-        if not verify_password(
-            password,
-            user["password_hash"],
-        ):
+        password_hash = user.get("password_hash")
+        if not password_hash or not verify_password(password, password_hash):
             return None
 
         if not user.get("is_active", True):

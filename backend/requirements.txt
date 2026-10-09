@@ -7,3 +7,4 @@ python-dotenv==1.2.4
 python-jose[cryptography]==3.5.0
 pwdlib[argon2]
 email-validator==2.3.0
+google-auth>=2.40,<3
