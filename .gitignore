@@ -1,0 +1,72 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+backend/.venv/
+backend/venv/
+
+# Machine learning artifacts
+*.joblib
+*.pkl
+*.pickle
+*.h5
+*.keras
+*.pt
+*.pth
+*.onnx
+
+# Node.js
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+.DS_Store
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Backup files
+docker-compose.yml.backup
+
+# SOLVIX local database backups
+backups/
+*.archive
+*.archive.gz
+
+# Old source backups and pre-patch files
+*.backup
+*.pre_worker_fix
+*.service_transaction_prepatch.py
+
+# Pytest cache
+.pytest_cache/
