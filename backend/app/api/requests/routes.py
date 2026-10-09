@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.dependencies import get_current_user, require_role
@@ -6,6 +8,9 @@ from app.services.worker_service import WorkerService
 from app.services.service_request_service import (
     ServiceRequestService,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -34,9 +39,39 @@ async def create_service_request(
         longitude=data.longitude,
     )
 
+    matched_workers_count = 0
+
+    try:
+        worker_service = WorkerService()
+
+        workers = worker_service.match_workers(
+            latitude=data.latitude,
+            longitude=data.longitude,
+            service=data.service,
+        )
+
+        request_id = request.get("id") or request.get("_id")
+
+        if request_id:
+            matched_request = service.match_request(
+                request_id=str(request_id),
+                workers=workers,
+            )
+
+            if matched_request:
+                request = matched_request
+                matched_workers_count = len(workers)
+
+    except Exception:
+        logger.exception(
+            "Automatic worker matching failed for service request %s",
+            request.get("id", request.get("_id", "unknown")),
+        )
+
     return {
         "success": True,
         "message": "Service request created successfully",
+        "matched_workers_count": matched_workers_count,
         "request": request,
     }
 
