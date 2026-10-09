@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     # Support geospatial worker searches.
     db["workers"].create_index(
         [("location", "2dsphere")],
-        name="workers_location_2dsphere",
+        name="worker_location_2dsphere",
     )
 
     logger.info("SOLVIX database indexes initialized successfully")
