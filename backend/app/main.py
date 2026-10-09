@@ -5,7 +5,10 @@ from app.api.workers.routes import router as workers_router
 from app.api.requests.routes import router as requests_router
 
 from app.config import settings
-from app.database.connection import check_database_connection
+from app.database.connection import check_database_connection, get_database
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -13,6 +16,21 @@ app = FastAPI(
     version=settings.app_version,
     description="SOLVIX Hyperlocal Service Marketplace API",
 )
+
+@app.on_event("startup")
+async def initialize_database_indexes():
+    try:
+        db = get_database()
+        db["workers"].create_index(
+            [("location", "2dsphere")],
+            name="worker_location_2dsphere",
+        )
+        logger.info("SOLVIX database indexes initialized successfully")
+    except Exception:
+        logger.exception("Failed to initialize SOLVIX database indexes")
+        raise
+
+
 
 
 app.add_middleware(
