@@ -74,6 +74,62 @@ function getRequestId(request) {
   return request?.id || request?._id || request?.request_id;
 }
 
+function getRequestLocation(request) {
+  const location = request?.location;
+
+  if (Array.isArray(location?.coordinates) && location.coordinates.length >= 2) {
+    const longitude = Number(location.coordinates[0]);
+    const latitude = Number(location.coordinates[1]);
+
+    if (
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 && latitude <= 90 &&
+      longitude >= -180 && longitude <= 180
+    ) {
+      return { latitude, longitude };
+    }
+  }
+
+  if (request?.latitude != null && request?.longitude != null) {
+    const latitude = Number(request.latitude);
+    const longitude = Number(request.longitude);
+
+    if (
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 && latitude <= 90 &&
+      longitude >= -180 && longitude <= 180
+    ) {
+      return { latitude, longitude };
+    }
+  }
+
+  return null;
+}
+
+function notificationTypeLabel(eventType) {
+  const labels = {
+    booking_created: "New Service Request",
+    booking_accepted: "Booking Accepted",
+    booking_rejected: "Booking Declined",
+    booking_confirmed: "Booking Confirmed",
+    booking_on_the_way: "Worker On The Way",
+    booking_arrived: "Worker Arrived",
+    booking_in_progress: "Service Started",
+    booking_completed: "Service Completed",
+    booking_cancelled: "Booking Cancelled",
+  };
+
+  if (!eventType) return "Notification";
+
+  return labels[eventType] ||
+    String(eventType)
+      .replace(/^booking_/, "")
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function statusLabel(value) {
   return String(value || "pending")
     .replaceAll("_", " ")
@@ -242,6 +298,49 @@ function App() {
       );
       setUnreadCount((old) => old + 1);
       flashError("Could not mark the notification as read. Please try again.");
+    }
+  };
+
+  const openNotification = async (notification) => {
+    setNotificationsOpen(false);
+    clearMessages();
+
+    await markNotificationRead(notification);
+
+    const requestId = notification?.booking_id;
+
+    if (!requestId) {
+      flashNotice(notification?.message || "Notification opened.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await api.get(
+        `/api/requests/${encodeURIComponent(requestId)}`
+      );
+
+      const request = response.data?.request;
+
+      if (!request) {
+        throw new Error("Request details were not returned by the server.");
+      }
+
+      setRequests((old) => {
+        const existing = old.filter(
+          (item) => getRequestId(item) !== getRequestId(request)
+        );
+        return [request, ...existing];
+      });
+
+      setPage("requests");
+    } catch (err) {
+      flashError(
+        getError(err) || "Could not open this request. Please refresh your requests."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1019,13 +1118,16 @@ function App() {
                           className={`notification-item ${
                             notification.is_read ? "is-read" : "is-unread"
                           }`}
-                          onClick={() => markNotificationRead(notification)}
+                          onClick={() => openNotification(notification)}
                         >
                           <span className="notification-item-icon" aria-hidden="true">
                             {notification.is_read ? "✓" : "●"}
                           </span>
                           <span className="notification-item-content">
                             <strong>{notification.title}</strong>
+                            <span className="notification-type">
+                              {notificationTypeLabel(notification.event_type)}
+                            </span>
                             <span>{notification.message}</span>
                             <small>
                               {notification.created_at
@@ -1165,6 +1267,15 @@ function App() {
 
   const WorkerCard = ({ worker }) => {
     const loc = getWorkerLocation(worker);
+    const hasWorkerCoordinates =
+      loc.latitude != null &&
+      loc.longitude != null &&
+      Number.isFinite(Number(loc.latitude)) &&
+      Number.isFinite(Number(loc.longitude)) &&
+      Number(loc.latitude) >= -90 &&
+      Number(loc.latitude) <= 90 &&
+      Number(loc.longitude) >= -180 &&
+      Number(loc.longitude) <= 180;
     const workerId = getWorkerId(worker);
     const profession = worker.profession || "Local service professional";
     const skills = Array.isArray(worker.skills) ? worker.skills : [];
@@ -1202,6 +1313,17 @@ function App() {
           </p>
         )}
 
+        {hasWorkerCoordinates && (
+          <a
+            className="btn btn-outline full-width"
+            href={`https://www.google.com/maps/dir/?api=1&destination=${Number(loc.latitude)},${Number(loc.longitude)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            📍 Get Directions
+          </a>
+        )}
+
         {user?.role === "customer" && (
           <button
             className="btn btn-primary full-width"
@@ -1220,6 +1342,8 @@ function App() {
   const RequestCard = ({ request }) => {
     const requestId = getRequestId(request);
     const currentStatus = request.status || "pending";
+    const requestLocation = getRequestLocation(request);
+    const assignedWorkerId = request.assigned_worker_id;
     const canWorkerAct =
       user?.role === "worker" &&
       (!request.worker_action || request.worker_action === "pending");
@@ -1243,10 +1367,23 @@ function App() {
           {request.created_at && (
             <span>📅 {formatIST(request.created_at)}</span>
           )}
-          {(request.latitude != null || request.longitude != null) && (
-            <span>📍 {request.latitude ?? "—"}, {request.longitude ?? "—"}</span>
+          {requestLocation && (
+            <>
+              <span>
+                📍 {requestLocation.latitude.toFixed(6)},{" "}
+                {requestLocation.longitude.toFixed(6)}
+              </span>
+              <a
+                className="text-button"
+                href={`https://www.google.com/maps/dir/?api=1&destination=${requestLocation.latitude},${requestLocation.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open location in Google Maps ↗
+              </a>
+            </>
           )}
-          {request.worker_id && <span>🧰 Worker assigned</span>}
+          {assignedWorkerId && <span>🧰 Worker assigned</span>}
         </div>
 
         {user?.role === "customer" && (

@@ -126,15 +126,10 @@ async def get_worker_service_requests(
 @router.get("/{request_id}")
 async def get_service_request(
     request_id: str,
-    current_user: dict = Depends(
-        require_role("customer")
-    ),
+    current_user: dict = Depends(get_current_user),
 ):
     service = ServiceRequestService()
-
-    request = service.get_request(
-        request_id
-    )
+    request = service.get_request(request_id)
 
     if not request:
         raise HTTPException(
@@ -142,7 +137,33 @@ async def get_service_request(
             detail="Service request not found",
         )
 
-    if request["customer_id"] != current_user["user_id"]:
+    user_id = str(current_user["user_id"])
+    role = current_user.get("role")
+
+    if role == "customer":
+        if str(request.get("customer_id")) != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view this request",
+            )
+
+    elif role == "worker":
+        matched_worker_ids = [
+            str(worker_id)
+            for worker_id in request.get("matched_worker_ids", [])
+        ]
+        assigned_worker_id = request.get("assigned_worker_id")
+
+        if (
+            user_id not in matched_worker_ids
+            and str(assigned_worker_id) != user_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view this request",
+            )
+
+    else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to view this request",
@@ -152,7 +173,6 @@ async def get_service_request(
         "success": True,
         "request": request,
     }
-
 
 @router.get("")
 async def get_my_service_requests(

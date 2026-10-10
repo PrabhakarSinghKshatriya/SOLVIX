@@ -2413,3 +2413,19 @@ textarea {
     max-width: 420px;
   }
 }
+
+
+/* SOLVIX notification type labels */
+.notification-type {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.10);
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
