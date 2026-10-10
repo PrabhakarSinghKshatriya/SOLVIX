@@ -88,49 +88,51 @@ def _otp_digest(email: str, otp: str) -> str:
 
 
 def _send_login_otp(email: str, otp: str) -> None:
-    # Log configuration status only; never log SMTP credentials.
-    logger.info(
-        "SOLVIX SMTP configuration: host=%s port=%s username_set=%s "
-        "password_set=%s tls=%s email_from_set=%s",
-        settings.smtp_host,
-        settings.smtp_port,
-        bool(settings.smtp_username),
-        bool(settings.smtp_password),
-        settings.smtp_use_tls,
-        bool(settings.email_from),
-    )
+    """Send login OTP using the Resend HTTPS API."""
+    import os
+    import requests
 
-    if not settings.smtp_username or not settings.smtp_password:
-        logger.error(
-            "SOLVIX SMTP configuration missing: username_set=%s password_set=%s",
-            bool(settings.smtp_username),
-            bool(settings.smtp_password),
-        )
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    sender = os.getenv(
+        "RESEND_FROM_EMAIL",
+        "onboarding@resend.dev",
+    ).strip()
+
+    if not api_key:
+        logger.error("RESEND_API_KEY is not configured.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email OTP is not configured. Set SMTP_USERNAME and SMTP_PASSWORD.",
+            detail="Email OTP service is not configured.",
         )
 
-    message = EmailMessage()
-    message["Subject"] = "Your SOLVIX login verification code"
-    message["From"] = settings.email_from or settings.smtp_username
-    message["To"] = email
-    message.set_content(
-        f"Your SOLVIX login OTP is {otp}. "
-        "It expires in 5 minutes. Do not share this code with anyone."
-    )
+    payload = {
+        "from": sender,
+        "to": [email],
+        "subject": "Your SOLVIX login verification code",
+        "text": (
+            f"Your SOLVIX login OTP is {otp}. "
+            "It expires in 5 minutes. "
+            "Do not share this code with anyone."
+        ),
+    }
 
     try:
-        with smtplib.SMTP(
-            settings.smtp_host, settings.smtp_port, timeout=15
-        ) as server:
-            if settings.smtp_use_tls:
-                server.starttls()
-            server.login(settings.smtp_username, settings.smtp_password)
-            server.send_message(message)
-    except Exception as exc:
-        logger.exception(
-            "SOLVIX login OTP email delivery failed (exception_type=%s)",
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=20,
+        )
+        response.raise_for_status()
+
+        logger.info("SOLVIX login OTP email accepted by Resend.")
+
+    except requests.RequestException as exc:
+        logger.error(
+            "SOLVIX Resend email delivery failed (exception_type=%s).",
             type(exc).__name__,
         )
         raise HTTPException(
