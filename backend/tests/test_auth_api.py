@@ -115,6 +115,7 @@ def test_register_creates_user_without_real_database():
                 "name": "Test Customer",
                 "email": "test@example.com",
                 "password": "TestPassword@123",
+                "phone": "9876543210",
                 "role": "customer",
             },
         )
@@ -138,6 +139,7 @@ def test_register_duplicate_email_returns_400():
                 "name": "Test Customer",
                 "email": "test@example.com",
                 "password": "TestPassword@123",
+                "phone": "9876543210",
                 "role": "customer",
             },
         )

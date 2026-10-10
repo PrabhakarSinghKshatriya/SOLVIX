@@ -16,17 +16,24 @@ from fastapi import APIRouter, HTTPException, status
 from app.dependencies import get_current_user, require_role
 from fastapi import Depends
 
-from app.core.security import create_access_token
+from app.core.security import create_access_token, hash_password
 from app.schemas.auth import (
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
     LoginRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
+    VerifyLoginOTPRequest,
 )
 from app.services.auth_service import AuthService
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Literal
+import hashlib
+import secrets
+import smtplib
+from email.message import EmailMessage
 
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
@@ -71,14 +78,46 @@ async def register_user(data: RegisterRequest):
         ) from exc
 
 
-@router.post(
-    "/login",
-    response_model=TokenResponse,
-)
+
+def _otp_digest(email: str, otp: str) -> str:
+    value = f"{email.strip().lower()}:{otp}:{settings.jwt_secret_key}"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _send_login_otp(email: str, otp: str) -> None:
+    if not settings.smtp_username or not settings.smtp_password:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email OTP is not configured. Set SMTP_USERNAME and SMTP_PASSWORD.",
+        )
+
+    message = EmailMessage()
+    message["Subject"] = "Your SOLVIX login verification code"
+    message["From"] = settings.email_from or settings.smtp_username
+    message["To"] = email
+    message.set_content(
+        f"Your SOLVIX login OTP is {otp}. "
+        "It expires in 5 minutes. Do not share this code with anyone."
+    )
+
+    try:
+        with smtplib.SMTP(
+            settings.smtp_host, settings.smtp_port, timeout=15
+        ) as server:
+            if settings.smtp_use_tls:
+                server.starttls()
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(message)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send the login verification email. Please try again later.",
+        ) from exc
+
+
+@router.post("/login")
 async def login_user(data: LoginRequest):
-
     auth_service = AuthService()
-
     user = auth_service.authenticate_user(
         email=data.email,
         password=data.password,
@@ -89,6 +128,85 @@ async def login_user(data: LoginRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+    email = data.email.strip().lower()
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+
+    # Send first; store only the digest, never the raw OTP.
+    _send_login_otp(email, otp)
+
+    now = datetime.now(timezone.utc)
+    collection = get_database()["login_otps"]
+    collection.delete_many({"email": email})
+    collection.insert_one({
+        "email": email,
+        "otp_digest": _otp_digest(email, otp),
+        "attempts": 0,
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=5),
+    })
+
+    return {
+        "success": True,
+        "otp_required": True,
+        "email": email,
+        "message": "A verification code has been sent to your email.",
+    }
+
+
+@router.post("/login/verify-otp", response_model=TokenResponse)
+async def verify_login_otp(data: VerifyLoginOTPRequest):
+    email = data.email.strip().lower()
+    collection = get_database()["login_otps"]
+    record = collection.find_one({"email": email})
+    now = datetime.now(timezone.utc)
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active OTP request found. Please log in again.",
+        )
+
+    expires_at = record.get("expires_at")
+    if not expires_at or expires_at <= now:
+        collection.delete_many({"email": email})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP has expired. Please log in again.",
+        )
+
+    if record.get("attempts", 0) >= 5:
+        collection.delete_many({"email": email})
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many incorrect OTP attempts. Please log in again.",
+        )
+
+    if not secrets.compare_digest(
+        record.get("otp_digest", ""),
+        _otp_digest(email, data.otp),
+    ):
+        collection.update_one(
+            {"_id": record["_id"]},
+            {"$inc": {"attempts": 1}},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code.",
+        )
+
+    user_doc = get_database()[UserModel.collection_name].find_one(
+        {"email": email}
+    )
+    if not user_doc or not user_doc.get("is_active", True):
+        collection.delete_many({"email": email})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account is unavailable.",
+        )
+
+    user = UserModel.serialize(user_doc)
+    collection.delete_many({"email": email})
 
     access_token = create_access_token(
         user_id=user["id"],
@@ -102,10 +220,145 @@ async def login_user(data: LoginRequest):
     }
 
 
-
 class GoogleLoginRequest(BaseModel):
     credential: str
     role: Literal["customer", "worker"] = "customer"
+
+
+
+
+@router.post("/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    """
+    Request a password-reset OTP.
+    The response is generic to avoid revealing whether an account exists.
+    """
+    email = data.email.strip().lower()
+    generic_response = {
+        "success": True,
+        "message": (
+            "If an account exists for this email, a password-reset "
+            "code will be sent shortly."
+        ),
+    }
+
+    users = get_database()[UserModel.collection_name]
+    user = users.find_one({"email": email})
+
+    # Do not disclose whether this email is registered.
+    if not user or not user.get("is_active", True) or not user.get("password_hash"):
+        return generic_response
+
+    otp = f"{secrets.randbelow(1_000_000):06d}"
+
+    try:
+        message = EmailMessage()
+        message["Subject"] = "Your SOLVIX password-reset code"
+        message["From"] = settings.email_from or settings.smtp_username
+        message["To"] = email
+        message.set_content(
+            f"Your SOLVIX password-reset OTP is {otp}. "
+            "It expires in 5 minutes. Do not share this code with anyone."
+        )
+
+        if not settings.smtp_username or not settings.smtp_password:
+            return generic_response
+
+        with smtplib.SMTP(
+            settings.smtp_host, settings.smtp_port, timeout=15
+        ) as server:
+            if settings.smtp_use_tls:
+                server.starttls()
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(message)
+    except Exception:
+        # Avoid exposing account existence or internal email errors.
+        return generic_response
+
+    now = datetime.now(timezone.utc)
+    collection = get_database()["password_reset_otps"]
+    collection.delete_many({"email": email})
+    collection.insert_one({
+        "email": email,
+        "otp_digest": _otp_digest(email, otp),
+        "attempts": 0,
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=5),
+    })
+
+    return generic_response
+
+
+@router.post("/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    email = data.email.strip().lower()
+    collection = get_database()["password_reset_otps"]
+    record = collection.find_one({"email": email})
+    now = datetime.now(timezone.utc)
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password-reset code. Request a new code.",
+        )
+
+    expires_at = record.get("expires_at")
+    if not expires_at or expires_at <= now:
+        collection.delete_many({"email": email})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password-reset code has expired. Request a new code.",
+        )
+
+    if record.get("attempts", 0) >= 5:
+        collection.delete_many({"email": email})
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many incorrect attempts. Request a new code.",
+        )
+
+    if not secrets.compare_digest(
+        record.get("otp_digest", ""),
+        _otp_digest(email, data.otp),
+    ):
+        collection.update_one(
+            {"_id": record["_id"]},
+            {"$inc": {"attempts": 1}},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password-reset code.",
+        )
+
+    users = get_database()[UserModel.collection_name]
+    user = users.find_one({"email": email})
+
+    if not user or not user.get("is_active", True) or not user.get("password_hash"):
+        collection.delete_many({"email": email})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account cannot reset its password.",
+        )
+
+    users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "password_hash": hash_password(data.new_password),
+                "updated_at": now,
+            }
+        },
+    )
+
+    collection.delete_many({"email": email})
+
+    # Invalidate any pending login OTP for this account.
+    get_database()["login_otps"].delete_many({"email": email})
+
+    return {
+        "success": True,
+        "message": "Password reset successfully. You can now log in.",
+    }
 
 
 @router.post("/google", response_model=TokenResponse)
