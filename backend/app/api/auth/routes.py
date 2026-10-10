@@ -126,13 +126,20 @@ def _send_login_otp(email: str, otp: str) -> None:
             json=payload,
             timeout=20,
         )
+        if not response.ok:
+            logger.error(
+                "SOLVIX Resend API rejected email: status=%s response=%s",
+                response.status_code,
+                response.text[:500],
+            )
+
         response.raise_for_status()
 
         logger.info("SOLVIX login OTP email accepted by Resend.")
 
     except requests.RequestException as exc:
-        logger.error(
-            "SOLVIX Resend email delivery failed (exception_type=%s).",
+        logger.exception(
+            "SOLVIX Resend email delivery failed: exception_type=%s",
             type(exc).__name__,
         )
         raise HTTPException(
