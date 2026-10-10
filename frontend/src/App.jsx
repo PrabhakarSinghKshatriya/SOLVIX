@@ -501,12 +501,10 @@ function App() {
           setAuthStep("login-otp");
           setAuthOtp("");
           flashNotice("Enter the verification code sent to your email.");
-        } else if (response.data?.access_token && response.data?.user) {
-          // Compatibility with deployments that have not enabled OTP yet.
-          saveSession(response.data.access_token, response.data.user);
-          flashNotice("Welcome back to SOLVIX!");
         } else {
-          throw new Error("The server returned an unexpected login response.");
+          throw new Error(
+            "OTP verification is not enabled on the connected server. Please try again after the backend is updated."
+          );
         }
       }
     } catch (err) {
