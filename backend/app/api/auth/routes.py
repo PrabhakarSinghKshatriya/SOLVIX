@@ -1,3 +1,4 @@
+import logging
 from app.schemas.worker import (
     CreateWorkerProfileRequest,
     LocationUpdateRequest,
@@ -82,6 +83,9 @@ async def register_user(data: RegisterRequest):
 def _otp_digest(email: str, otp: str) -> str:
     value = f"{email.strip().lower()}:{otp}:{settings.jwt_secret_key}"
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+logger = logging.getLogger(__name__)
 
 
 def _send_login_otp(email: str, otp: str) -> None:
