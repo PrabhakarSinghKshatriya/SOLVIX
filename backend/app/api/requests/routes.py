@@ -1,8 +1,11 @@
 import logging
 
+from bson import ObjectId
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.dependencies import get_current_user, require_role
+from app.database.connection import get_database
 from app.schemas.service_request import CreateServiceRequest, StatusTransitionRequest, WorkerRequestAction
 from app.services.worker_service import WorkerService
 from app.services.notification_service import NotificationService
@@ -123,17 +126,26 @@ async def get_worker_service_requests(
     }
 
 
-@router.get("/{request_id}")
-async def get_service_request(
-    request_id: str,
-    current_user: dict = Depends(
-        require_role("customer")
-    ),
-):
-    service = ServiceRequestService()
 
-    request = service.get_request(
-        request_id
+# SOLVIX_SECURE_CONTACTS_V1
+@router.get("/{request_id}/contacts")
+async def get_service_request_contacts(
+    request_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Reveal booking contact information only to the customer who owns
+    the booking and the worker currently assigned to it.
+    """
+    if not ObjectId.is_valid(request_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Service request not found",
+        )
+
+    db = get_database()
+    request = db["service_requests"].find_one(
+        {"_id": ObjectId(request_id)}
     )
 
     if not request:
@@ -142,7 +154,112 @@ async def get_service_request(
             detail="Service request not found",
         )
 
-    if request["customer_id"] != current_user["user_id"]:
+    user_id = str(current_user.get("user_id", ""))
+    role = current_user.get("role")
+
+    customer_id = str(request.get("customer_id", ""))
+    assigned_worker_id = str(request.get("assigned_worker_id", ""))
+
+    if role == "customer":
+        if user_id != customer_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot access this booking's contacts",
+            )
+
+        if not assigned_worker_id or assigned_worker_id in ("None", ""):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A worker must be assigned before contact details are available",
+            )
+
+        target_user_id = assigned_worker_id
+        target_label = "worker"
+
+    elif role == "worker":
+        if not assigned_worker_id or user_id != assigned_worker_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the assigned worker can access customer contact details",
+            )
+
+        target_user_id = customer_id
+        target_label = "customer"
+
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot access this booking's contacts",
+        )
+
+    if not ObjectId.is_valid(target_user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact information not found",
+        )
+
+    target_user = db["users"].find_one(
+        {"_id": ObjectId(target_user_id)},
+        {"name": 1, "phone": 1},
+    )
+
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Contact information not found",
+        )
+
+    return {
+        "success": True,
+        "contact_type": target_label,
+        "contact": {
+            "name": target_user.get("name") or target_label.title(),
+            "phone": target_user.get("phone") or "",
+        },
+    }
+
+
+@router.get("/{request_id}")
+async def get_service_request(
+    request_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    service = ServiceRequestService()
+    request = service.get_request(request_id)
+
+    if not request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Service request not found",
+        )
+
+    user_id = str(current_user["user_id"])
+    role = current_user.get("role")
+
+    if role == "customer":
+        if str(request.get("customer_id")) != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view this request",
+            )
+
+    elif role == "worker":
+        matched_worker_ids = [
+            str(worker_id)
+            for worker_id in request.get("matched_worker_ids", [])
+        ]
+        assigned_worker_id = request.get("assigned_worker_id")
+
+        if (
+            user_id not in matched_worker_ids
+            and str(assigned_worker_id) != user_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view this request",
+            )
+
+    else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to view this request",
@@ -152,7 +269,6 @@ async def get_service_request(
         "success": True,
         "request": request,
     }
-
 
 @router.get("")
 async def get_my_service_requests(

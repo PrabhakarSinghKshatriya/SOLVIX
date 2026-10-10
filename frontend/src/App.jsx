@@ -74,6 +74,62 @@ function getRequestId(request) {
   return request?.id || request?._id || request?.request_id;
 }
 
+function getRequestLocation(request) {
+  const location = request?.location;
+
+  if (Array.isArray(location?.coordinates) && location.coordinates.length >= 2) {
+    const longitude = Number(location.coordinates[0]);
+    const latitude = Number(location.coordinates[1]);
+
+    if (
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 && latitude <= 90 &&
+      longitude >= -180 && longitude <= 180
+    ) {
+      return { latitude, longitude };
+    }
+  }
+
+  if (request?.latitude != null && request?.longitude != null) {
+    const latitude = Number(request.latitude);
+    const longitude = Number(request.longitude);
+
+    if (
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 && latitude <= 90 &&
+      longitude >= -180 && longitude <= 180
+    ) {
+      return { latitude, longitude };
+    }
+  }
+
+  return null;
+}
+
+function notificationTypeLabel(eventType) {
+  const labels = {
+    booking_created: "New Service Request",
+    booking_accepted: "Booking Accepted",
+    booking_rejected: "Booking Declined",
+    booking_confirmed: "Booking Confirmed",
+    booking_on_the_way: "Worker On The Way",
+    booking_arrived: "Worker Arrived",
+    booking_in_progress: "Service Started",
+    booking_completed: "Service Completed",
+    booking_cancelled: "Booking Cancelled",
+  };
+
+  if (!eventType) return "Notification";
+
+  return labels[eventType] ||
+    String(eventType)
+      .replace(/^booking_/, "")
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function statusLabel(value) {
   return String(value || "pending")
     .replaceAll("_", " ")
@@ -95,6 +151,17 @@ function App() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [backendStatus, setBackendStatus] = useState("checking");
+
+  // SOLVIX_LIVE_STATS_CONTACTS_ADMIN_V1
+  const [publicStats, setPublicStats] = useState(null);
+  const [requestContacts, setRequestContacts] = useState({});
+  const [contactLoading, setContactLoading] = useState({});
+  const [adminOverview, setAdminOverview] = useState(null);
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminWorkers, setAdminWorkers] = useState([]);
+  const [adminRequests, setAdminRequests] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState("");
 
   const [authForm, setAuthForm] = useState({
     name: "",
@@ -145,6 +212,31 @@ function App() {
   const [checkoutPlan, setCheckoutPlan] = useState("");
 
   const [statusDrafts, setStatusDrafts] = useState({});
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshPublicStats = async () => {
+      try {
+        const response = await api.get("/api/stats/public", {
+          timeout: 12000,
+        });
+        if (active && response.data?.success) {
+          setPublicStats(response.data);
+        }
+      } catch {
+        // Keep the homepage usable if the statistics API is unavailable.
+      }
+    };
+
+    refreshPublicStats();
+    const timer = window.setInterval(refreshPublicStats, 60000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const clearMessages = () => {
     setNotice("");
@@ -242,6 +334,49 @@ function App() {
       );
       setUnreadCount((old) => old + 1);
       flashError("Could not mark the notification as read. Please try again.");
+    }
+  };
+
+  const openNotification = async (notification) => {
+    setNotificationsOpen(false);
+    clearMessages();
+
+    await markNotificationRead(notification);
+
+    const requestId = notification?.booking_id;
+
+    if (!requestId) {
+      flashNotice(notification?.message || "Notification opened.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await api.get(
+        `/api/requests/${encodeURIComponent(requestId)}`
+      );
+
+      const request = response.data?.request;
+
+      if (!request) {
+        throw new Error("Request details were not returned by the server.");
+      }
+
+      setRequests((old) => {
+        const existing = old.filter(
+          (item) => getRequestId(item) !== getRequestId(request)
+        );
+        return [request, ...existing];
+      });
+
+      setPage("requests");
+    } catch (err) {
+      flashError(
+        getError(err) || "Could not open this request. Please refresh your requests."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -941,6 +1076,9 @@ function App() {
         {user && (
           <button onClick={goDashboard}>Dashboard</button>
         )}
+        {user?.role === "admin" && (
+          <button onClick={() => setPage("admin")}>Admin</button>
+        )}
         {user?.role === "customer" && (
           <button onClick={loadCustomerRequests}>My bookings</button>
         )}
@@ -1019,13 +1157,16 @@ function App() {
                           className={`notification-item ${
                             notification.is_read ? "is-read" : "is-unread"
                           }`}
-                          onClick={() => markNotificationRead(notification)}
+                          onClick={() => openNotification(notification)}
                         >
                           <span className="notification-item-icon" aria-hidden="true">
                             {notification.is_read ? "✓" : "●"}
                           </span>
                           <span className="notification-item-content">
                             <strong>{notification.title}</strong>
+                            <span className="notification-type">
+                              {notificationTypeLabel(notification.event_type)}
+                            </span>
                             <span>{notification.message}</span>
                             <small>
                               {notification.created_at
@@ -1165,6 +1306,15 @@ function App() {
 
   const WorkerCard = ({ worker }) => {
     const loc = getWorkerLocation(worker);
+    const hasWorkerCoordinates =
+      loc.latitude != null &&
+      loc.longitude != null &&
+      Number.isFinite(Number(loc.latitude)) &&
+      Number.isFinite(Number(loc.longitude)) &&
+      Number(loc.latitude) >= -90 &&
+      Number(loc.latitude) <= 90 &&
+      Number(loc.longitude) >= -180 &&
+      Number(loc.longitude) <= 180;
     const workerId = getWorkerId(worker);
     const profession = worker.profession || "Local service professional";
     const skills = Array.isArray(worker.skills) ? worker.skills : [];
@@ -1202,6 +1352,17 @@ function App() {
           </p>
         )}
 
+        {hasWorkerCoordinates && (
+          <a
+            className="btn btn-outline full-width"
+            href={`https://www.google.com/maps/dir/?api=1&destination=${Number(loc.latitude)},${Number(loc.longitude)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            📍 Get Directions
+          </a>
+        )}
+
         {user?.role === "customer" && (
           <button
             className="btn btn-primary full-width"
@@ -1217,9 +1378,80 @@ function App() {
     );
   };
 
+  const loadRequestContacts = async (request) => {
+    const requestId = getRequestId(request);
+    if (!requestId) {
+      flashError("The booking ID is missing.");
+      return;
+    }
+
+    setContactLoading((old) => ({ ...old, [requestId]: true }));
+    try {
+      const response = await api.get(
+        `/api/requests/${encodeURIComponent(requestId)}/contacts`
+      );
+      setRequestContacts((old) => ({
+        ...old,
+        [requestId]: response.data?.contact || null,
+      }));
+      if (!response.data?.contact?.phone) {
+        flashNotice("Contact loaded, but no phone number is available.");
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      flashError(
+        typeof detail === "string"
+          ? detail
+          : getError(err)
+      );
+    } finally {
+      setContactLoading((old) => ({ ...old, [requestId]: false }));
+    }
+  };
+
+  const loadAdminData = async () => {
+    if (user?.role !== "admin") {
+      flashError("Admin access is required.");
+      return;
+    }
+
+    setAdminLoading(true);
+    setAdminError("");
+    try {
+      const [overview, users, workers, requests] = await Promise.all([
+        api.get("/api/admin/overview"),
+        api.get("/api/admin/users?limit=10&page=1"),
+        api.get("/api/admin/workers?limit=10&page=1"),
+        api.get("/api/admin/requests?limit=10&page=1"),
+      ]);
+
+      setAdminOverview(overview.data);
+      setAdminUsers(users.data?.items || []);
+      setAdminWorkers(workers.data?.items || []);
+      setAdminRequests(requests.data?.items || []);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setAdminError(
+        typeof detail === "string"
+          ? detail
+          : getError(err)
+      );
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (page === "admin" && user?.role === "admin") {
+      loadAdminData();
+    }
+  }, [page, user?.role]);
+
   const RequestCard = ({ request }) => {
     const requestId = getRequestId(request);
     const currentStatus = request.status || "pending";
+    const requestLocation = getRequestLocation(request);
+    const assignedWorkerId = request.assigned_worker_id;
     const canWorkerAct =
       user?.role === "worker" &&
       (!request.worker_action || request.worker_action === "pending");
@@ -1243,10 +1475,23 @@ function App() {
           {request.created_at && (
             <span>📅 {formatIST(request.created_at)}</span>
           )}
-          {(request.latitude != null || request.longitude != null) && (
-            <span>📍 {request.latitude ?? "—"}, {request.longitude ?? "—"}</span>
+          {requestLocation && (
+            <>
+              <span>
+                📍 {requestLocation.latitude.toFixed(6)},{" "}
+                {requestLocation.longitude.toFixed(6)}
+              </span>
+              <a
+                className="text-button"
+                href={`https://www.google.com/maps/dir/?api=1&destination=${requestLocation.latitude},${requestLocation.longitude}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open location in Google Maps ↗
+              </a>
+            </>
           )}
-          {request.worker_id && <span>🧰 Worker assigned</span>}
+          {assignedWorkerId && <span>🧰 Worker assigned</span>}
         </div>
 
         {user?.role === "customer" && (
@@ -1269,6 +1514,43 @@ function App() {
                 Update
               </button>
             </div>
+          </div>
+        )}
+
+        {(
+          (user?.role === "customer" && assignedWorkerId) ||
+          (
+            user?.role === "worker" &&
+            String(assignedWorkerId || "") === String(getUserId(user) || "")
+          )
+        ) && (
+          <div className="booking-contact-panel">
+            {!requestContacts[requestId] ? (
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={Boolean(contactLoading[requestId])}
+                onClick={() => loadRequestContacts(request)}
+              >
+                {contactLoading[requestId]
+                  ? "Loading contact..."
+                  : "View booking contact"}
+              </button>
+            ) : (
+              <div className="booking-contact-details">
+                <strong>{requestContacts[requestId].name}</strong>
+                {requestContacts[requestId].phone ? (
+                  <a
+                    className="btn btn-primary"
+                    href={`tel:${String(requestContacts[requestId].phone).replace(/[^+\\d]/g, "")}`}
+                  >
+                    Call {requestContacts[requestId].name}
+                  </a>
+                ) : (
+                  <span>Phone number not available.</span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1301,6 +1583,153 @@ function App() {
           </div>
         )}
       </article>
+    );
+  };
+
+  const AdminPage = () => {
+    const overview = adminOverview || {};
+    const users = overview.users || {};
+    const workers = overview.workers || {};
+    const requests = overview.requests || {};
+
+    if (user?.role !== "admin") {
+      return (
+        <section className="section-block">
+          <h1>Access denied</h1>
+          <p>This page is available to authorized administrators only.</p>
+          <button className="btn btn-primary" onClick={goDashboard}>
+            Back to dashboard
+          </button>
+        </section>
+      );
+    }
+
+    const Metric = ({ label, value }) => (
+      <article className="dashboard-metric">
+        <span>{label}</span>
+        <strong>{Number(value || 0).toLocaleString()}</strong>
+      </article>
+    );
+
+    return (
+      <section className="section-block admin-dashboard">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">SOLVIX CONTROL CENTRE</span>
+            <h1>Admin dashboard</h1>
+            <p>Marketplace overview from the protected admin API.</p>
+          </div>
+          <button
+            className="btn btn-outline"
+            onClick={loadAdminData}
+            disabled={adminLoading}
+          >
+            {adminLoading ? "Refreshing..." : "Refresh data"}
+          </button>
+        </div>
+
+        {adminError && (
+          <div className="notice notice-error" role="alert">
+            {adminError}
+          </div>
+        )}
+
+        {adminLoading && !adminOverview && <p>Loading admin data...</p>}
+
+        {adminOverview && (
+          <>
+            <h2>Users</h2>
+            <div className="admin-metrics">
+              <Metric label="All users" value={users.total} />
+              <Metric label="Customers" value={users.customers} />
+              <Metric label="Workers" value={users.workers} />
+              <Metric label="Active accounts" value={users.active} />
+            </div>
+
+            <h2>Workers</h2>
+            <div className="admin-metrics">
+              <Metric label="Registered workers" value={workers.total} />
+              <Metric label="Available" value={workers.available} />
+              <Metric label="Busy" value={workers.busy} />
+            </div>
+
+            <h2>Service requests</h2>
+            <div className="admin-metrics">
+              <Metric label="All requests" value={requests.total} />
+              <Metric label="Requested" value={requests.requested} />
+              <Metric label="Accepted" value={requests.accepted} />
+              <Metric label="In progress" value={requests.in_progress} />
+              <Metric label="Completed" value={requests.completed} />
+              <Metric label="Cancelled" value={requests.cancelled} />
+            </div>
+
+            <h2>Recent users</h2>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th></tr>
+                </thead>
+                <tbody>
+                  {adminUsers.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.name || "—"}</td>
+                      <td>{item.email || "—"}</td>
+                      <td>{item.role || "—"}</td>
+                      <td>{item.is_active ? "Yes" : "No"}</td>
+                    </tr>
+                  ))}
+                  {!adminUsers.length && (
+                    <tr><td colSpan="4">No users returned.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h2>Recent workers</h2>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Profession</th><th>Availability</th><th>Rating</th><th>Verified</th></tr>
+                </thead>
+                <tbody>
+                  {adminWorkers.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.profession || "—"}</td>
+                      <td>{statusLabel(item.availability)}</td>
+                      <td>{Number(item.rating || 0).toFixed(1)}</td>
+                      <td>{item.is_verified ? "Yes" : "No"}</td>
+                    </tr>
+                  ))}
+                  {!adminWorkers.length && (
+                    <tr><td colSpan="4">No workers returned.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h2>Recent requests</h2>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Service</th><th>Status</th><th>Created</th></tr>
+                </thead>
+                <tbody>
+                  {adminRequests.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.service || "—"}</td>
+                      <td>{statusLabel(item.status)}</td>
+                      <td>{item.created_at ? formatIST(item.created_at) : "—"}</td>
+                    </tr>
+                  ))}
+                  {!adminRequests.length && (
+                    <tr><td colSpan="3">No requests returned.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
     );
   };
 
@@ -1744,10 +2173,23 @@ function App() {
               </div>
             </section>
 
-            <section className="home-stats">
-              <div><strong>01</strong><span>Choose a service</span></div>
-              <div><strong>02</strong><span>Set your location</span></div>
-              <div><strong>03</strong><span>Connect and solve</span></div>
+            <section className="home-stats" aria-label="SOLVIX marketplace statistics">
+              <div>
+                <strong>{publicStats ? Number(publicStats.users?.customers || 0).toLocaleString() : "—"}</strong>
+                <span>Customers</span>
+              </div>
+              <div>
+                <strong>{publicStats ? Number(publicStats.workers?.total || 0).toLocaleString() : "—"}</strong>
+                <span>Registered professionals</span>
+              </div>
+              <div>
+                <strong>{publicStats ? Number(publicStats.workers?.available || 0).toLocaleString() : "—"}</strong>
+                <span>Available professionals</span>
+              </div>
+              <div>
+                <strong>{publicStats ? Number(publicStats.requests?.completed || 0).toLocaleString() : "—"}</strong>
+                <span>Completed services</span>
+              </div>
             </section>
 
             <section className="section-block">
@@ -1766,6 +2208,7 @@ function App() {
         )}
 
         {page === "dashboard" && Dashboard()}
+        {page === "admin" && user?.role === "admin" && AdminPage()}
         {page === "services" && ServicesPage()}
         {page === "workers" && WorkersPage()}
         {page === "requests" && RequestsPage()}
