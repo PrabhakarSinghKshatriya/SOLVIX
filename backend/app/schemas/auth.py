@@ -10,7 +10,7 @@ class RegisterRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
-    phone: str = Field(..., min_length=10, max_length=15)
+    phone: str = Field(..., min_length=10, max_length=10)
     role: UserRole
 
     @field_validator("name")
@@ -31,8 +31,8 @@ class RegisterRequest(BaseModel):
         if not value.isdigit():
             raise ValueError("Phone must contain only digits")
 
-        if len(value) < 10 or len(value) > 15:
-            raise ValueError("Phone must contain 10 to 15 digits")
+        if len(value) != 10:
+            raise ValueError("Phone must contain exactly 10 digits")
 
         return value
 
