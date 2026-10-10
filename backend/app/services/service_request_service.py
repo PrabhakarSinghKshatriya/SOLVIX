@@ -229,7 +229,6 @@ class ServiceRequestService:
             worker_result = self.db["workers"].update_one(
                 {
                     "user_id": worker_id,
-                    "availability": "available",
                     "is_active": True,
                 },
                 {
@@ -241,9 +240,9 @@ class ServiceRequestService:
                 session=session,
             )
 
-            if worker_result.modified_count != 1:
+            if worker_result.matched_count != 1:
                 raise ValueError(
-                    "Worker is not available to accept requests"
+                    "Active worker profile not found"
                 )
 
             result = self.requests.find_one_and_update(
@@ -458,24 +457,109 @@ class ServiceRequestService:
         self,
         worker_id: str,
     ) -> list[dict]:
+        from app.services.worker_service import WorkerService
+
+        worker_service = WorkerService()
 
         cursor = self.requests.find(
             {
                 "$or": [
-                    {
-                        "matched_worker_ids": worker_id
-                    },
-                    {
-                        "assigned_worker_id": worker_id
-                    },
+                    {"status": "requested"},
+                    {"matched_worker_ids": worker_id},
+                    {"assigned_worker_id": worker_id},
                 ]
             }
-        ).sort(
-            "created_at",
-            -1,
-        )
+        ).sort("created_at", -1)
 
-        return [
-            ServiceRequestModel.serialize(request)
-            for request in cursor
-        ]
+        visible_requests = []
+
+        for request in cursor:
+            request_status = request.get("status", "requested")
+            assigned_worker_id = request.get("assigned_worker_id")
+            matched_ids = list(request.get("matched_worker_ids") or [])
+
+            # Already assigned requests are visible only to the assigned
+            # worker and workers who were previously matched to them.
+            if assigned_worker_id and assigned_worker_id != worker_id:
+                if worker_id in matched_ids:
+                    visible_requests.append(
+                        ServiceRequestModel.serialize(request)
+                    )
+                continue
+
+            # Keep the worker's own assigned requests visible.
+            if assigned_worker_id == worker_id:
+                visible_requests.append(
+                    ServiceRequestModel.serialize(request)
+                )
+                continue
+
+            # Only pending, unassigned requests can be newly matched.
+            if request_status != "requested":
+                if worker_id in matched_ids:
+                    visible_requests.append(
+                        ServiceRequestModel.serialize(request)
+                    )
+                continue
+
+            location = request.get("location") or {}
+            coordinates = location.get("coordinates") or []
+
+            if len(coordinates) != 2:
+                if worker_id in matched_ids:
+                    visible_requests.append(
+                        ServiceRequestModel.serialize(request)
+                    )
+                continue
+
+            try:
+                longitude, latitude = map(float, coordinates)
+                eligible_workers = worker_service.match_workers(
+                    latitude=latitude,
+                    longitude=longitude,
+                    service=str(request.get("service") or ""),
+                )
+            except (TypeError, ValueError):
+                if worker_id in matched_ids:
+                    visible_requests.append(
+                        ServiceRequestModel.serialize(request)
+                    )
+                continue
+
+            eligible_ids = [
+                str(worker.get("user_id"))
+                for worker in eligible_workers
+                if worker.get("user_id")
+            ]
+
+            # Persist the currently eligible worker IDs so request-detail
+            # authorization and worker acceptance use the same match list.
+            if eligible_ids:
+                self.requests.update_one(
+                    {
+                        "_id": request["_id"],
+                        "status": "requested",
+                        "assigned_worker_id": None,
+                    },
+                    {
+                        "$addToSet": {
+                            "matched_worker_ids": {
+                                "$each": eligible_ids
+                            }
+                        },
+                        "$set": {
+                            "match_status": "matched",
+                            "updated_at": datetime.now(timezone.utc),
+                        },
+                    },
+                )
+
+            if worker_id in eligible_ids or worker_id in matched_ids:
+                request["matched_worker_ids"] = list(
+                    dict.fromkeys(matched_ids + eligible_ids)
+                )
+                visible_requests.append(
+                    ServiceRequestModel.serialize(request)
+                )
+
+        return visible_requests

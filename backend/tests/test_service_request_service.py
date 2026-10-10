@@ -274,6 +274,7 @@ def test_worker_action_accepts_matched_worker(setup_service):
     }
 
     service.requests.find_one.return_value = request
+    service.db["workers"].update_one.return_value.matched_count = 1
     service.db["workers"].update_one.return_value.modified_count = 1
     service.requests.find_one_and_update.return_value = updated_request
 
@@ -338,20 +339,40 @@ def test_unmatched_worker_cannot_accept_request(setup_service):
     service.requests.find_one_and_update.assert_not_called()
 
 
-def test_unavailable_worker_cannot_accept_request(setup_service):
+def test_busy_worker_can_accept_request(setup_service):
     service = setup_service
-    service.requests.find_one.return_value = {
+    request = {
         "_id": ObjectId(REQUEST_ID),
         "status": "requested",
         "assigned_worker_id": None,
         "matched_worker_ids": [WORKER_ID],
     }
+    updated_request = {
+        **request,
+        "status": "accepted",
+        "assigned_worker_id": WORKER_ID,
+        "match_status": "assigned",
+    }
+
+    service.requests.find_one.return_value = request
+
+    # The worker already has availability="busy"; MongoDB matches the
+    # active worker but may report no modified fields.
+    service.db["workers"].update_one.return_value.matched_count = 1
     service.db["workers"].update_one.return_value.modified_count = 0
+    service.requests.find_one_and_update.return_value = updated_request
 
-    with pytest.raises(ValueError, match="not available"):
-        service.worker_action(REQUEST_ID, WORKER_ID, "accept")
+    with patch(
+        "app.services.service_request_service.ServiceRequestModel.serialize",
+        return_value={"id": REQUEST_ID, "status": "accepted"},
+    ):
+        result = service.worker_action(
+            REQUEST_ID, WORKER_ID, "accept"
+        )
 
-    service.requests.find_one_and_update.assert_not_called()
+    assert result["status"] == "accepted"
+    service.db["workers"].update_one.assert_called_once()
+    service.requests.find_one_and_update.assert_called_once()
 
 
 def test_worker_action_rejects_invalid_action(setup_service):
