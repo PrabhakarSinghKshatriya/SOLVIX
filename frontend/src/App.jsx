@@ -497,15 +497,13 @@ function App() {
           password: authForm.password,
         });
 
-        if (response.data?.otp_required) {
-          setAuthStep("login-otp");
-          setAuthOtp("");
-          flashNotice("Enter the verification code sent to your email.");
-        } else {
-          throw new Error(
-            "OTP verification is not enabled on the connected server. Please try again after the backend is updated."
-          );
+        if (!response.data?.access_token || !response.data?.user) {
+          throw new Error("Login did not return a valid session.");
         }
+
+        saveSession(response.data.access_token, response.data.user);
+        setAuthOtp("");
+        flashNotice("Welcome back to SOLVIX!");
       }
     } catch (err) {
       flashError(getError(err));

@@ -149,42 +149,41 @@ def _send_login_otp(email: str, otp: str) -> None:
         ) from exc
 
 
-@router.post("/login")
+@router.post("/login", response_model=TokenResponse)
 async def login_user(data: LoginRequest):
     auth_service = AuthService()
-    user = auth_service.authenticate_user(
+    authenticated_user = auth_service.authenticate_user(
         email=data.email,
         password=data.password,
     )
 
-    if not user:
+    if not authenticated_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
     email = data.email.strip().lower()
-    otp = f"{secrets.randbelow(1_000_000):06d}"
+    users = get_database()[UserModel.collection_name]
+    user_doc = users.find_one({"email": email})
 
-    # Send first; store only the digest, never the raw OTP.
-    _send_login_otp(email, otp)
+    if not user_doc or not user_doc.get("is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This account is unavailable.",
+        )
 
-    now = datetime.now(timezone.utc)
-    collection = get_database()["login_otps"]
-    collection.delete_many({"email": email})
-    collection.insert_one({
-        "email": email,
-        "otp_digest": _otp_digest(email, otp),
-        "attempts": 0,
-        "created_at": now,
-        "expires_at": now + timedelta(minutes=5),
-    })
+    user = UserModel.serialize(user_doc)
+
+    access_token = create_access_token(
+        user_id=user["id"],
+        role=user["role"],
+    )
 
     return {
-        "success": True,
-        "otp_required": True,
-        "email": email,
-        "message": "A verification code has been sent to your email.",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user,
     }
 
 
