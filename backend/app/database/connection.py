@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from pymongo import MongoClient
 
 from app.config import settings
@@ -6,6 +8,8 @@ from app.config import settings
 client = MongoClient(
     settings.mongodb_uri,
     serverSelectionTimeoutMS=5000,
+    tz_aware=True,
+    tzinfo=timezone.utc,
 )
 
 database = client[settings.mongodb_database]

@@ -1,3 +1,4 @@
+import { formatIST } from "./utils/dateTime";
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
@@ -854,7 +855,7 @@ function App() {
 
         <div className="request-details">
           {request.created_at && (
-            <span>📅 {new Date(request.created_at).toLocaleString()}</span>
+            <span>📅 {formatIST(request.created_at)}</span>
           )}
           {(request.latitude != null || request.longitude != null) && (
             <span>📍 {request.latitude ?? "—"}, {request.longitude ?? "—"}</span>
