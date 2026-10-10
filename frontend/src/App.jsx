@@ -217,6 +217,55 @@ function App() {
 
   const [statusDrafts, setStatusDrafts] = useState({});
 
+  // SOLVIX_PRO_DASHBOARD_PHONE_V1
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [dashboardStatsLoading, setDashboardStatsLoading] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(user?.phone || "");
+  const [phoneSaving, setPhoneSaving] = useState(false);
+
+  useEffect(() => {
+    setPhoneInput(user?.phone || "");
+
+    if (!user?.id || !["customer", "worker"].includes(user.role)) {
+      setDashboardStats(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadStats = async () => {
+      setDashboardStatsLoading(true);
+      setDashboardStats(null);
+
+      try {
+        const endpoint =
+          user.role === "worker"
+            ? "/api/requests/worker/stats"
+            : "/api/requests/customer/stats";
+
+        const response = await api.get(endpoint);
+
+        if (!cancelled && response.data?.success) {
+          setDashboardStats(response.data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Could not load dashboard statistics:", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setDashboardStatsLoading(false);
+        }
+      }
+    };
+
+    loadStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role]);
+
   useEffect(() => {
     let active = true;
 
@@ -408,6 +457,40 @@ function App() {
     setUser(loggedInUser);
     setPage("dashboard");
     clearMessages();
+  };
+
+  // SOLVIX_PRO_DASHBOARD_PHONE_V1
+  const saveAccountPhone = async (event) => {
+    event.preventDefault();
+    clearMessages();
+
+    const phone = phoneInput.trim();
+
+    if (!/^[0-9]{10,15}$/.test(phone)) {
+      flashError("Enter a valid phone number containing 10–15 digits.");
+      return;
+    }
+
+    setPhoneSaving(true);
+
+    try {
+      const response = await api.patch("/api/auth/phone", { phone });
+      const updatedUser = response.data?.user;
+
+      if (!updatedUser) {
+        throw new Error("The server did not return the updated account.");
+      }
+
+      const nextUser = { ...user, ...updatedUser };
+      localStorage.setItem("solvix_user", JSON.stringify(nextUser));
+      setUser(nextUser);
+      setPhoneInput(nextUser.phone || phone);
+      flashNotice("Phone number saved successfully.");
+    } catch (err) {
+      flashError(getError(err) || "Could not save your phone number.");
+    } finally {
+      setPhoneSaving(false);
+    }
   };
 
   const logout = () => {
@@ -1046,10 +1129,40 @@ function App() {
     setLoading(true);
 
     try {
-      await api.patch(`/api/requests/${requestId}/status`, { status });
-      flashNotice("Request status updated.");
-      if (user.role === "worker") await loadWorkerRequests();
-      else await loadCustomerRequests();
+      const response = await api.patch(
+        `/api/requests/${requestId}/status`,
+        { status }
+      );
+
+      const updatedRequest = response.data?.request;
+
+      // Remove the old dropdown selection so the latest server status
+      // is displayed after the request list refreshes.
+      setStatusDrafts((old) => {
+        const next = { ...old };
+        delete next[requestId];
+        return next;
+      });
+
+      if (updatedRequest) {
+        setRequests((old) =>
+          old.map((item) =>
+            getRequestId(item) === requestId
+              ? { ...item, ...updatedRequest }
+              : item
+          )
+        );
+      }
+
+      flashNotice(
+        response.data?.message || "Request status updated successfully."
+      );
+
+      if (user.role === "worker") {
+        await loadWorkerRequests();
+      } else {
+        await loadCustomerRequests();
+      }
     } catch (err) {
       flashError(getError(err));
     } finally {
@@ -1842,6 +1955,143 @@ function App() {
           <div className="art-card"><span>✓</span><div><strong>One place.</strong><small>Every solution.</small></div></div>
           <div className="art-tool">🧰</div>
         </div>
+      </section>
+
+      {/* SOLVIX_PRO_DASHBOARD_PHONE_V1 */}
+      <section className="dashboard-overview">
+        <div className="dashboard-overview-heading">
+          <div>
+            <span className="eyebrow">YOUR ACTIVITY</span>
+            <h2>{user?.role === "worker" ? "Professional overview" : "Booking overview"}</h2>
+            <p>
+              {user?.role === "worker"
+                ? "Track jobs assigned directly to your account."
+                : "Keep track of your service bookings and progress."}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => {
+              const endpoint =
+                user?.role === "worker"
+                  ? "/api/requests/worker/stats"
+                  : "/api/requests/customer/stats";
+
+              setDashboardStatsLoading(true);
+              api.get(endpoint)
+                .then((response) => setDashboardStats(response.data))
+                .catch((err) => flashError(getError(err)))
+                .finally(() => setDashboardStatsLoading(false));
+            }}
+            disabled={dashboardStatsLoading}
+          >
+            {dashboardStatsLoading ? "Refreshing..." : "↻ Refresh stats"}
+          </button>
+        </div>
+
+        {dashboardStatsLoading && !dashboardStats && (
+          <p className="helper-text" role="status">Loading your activity...</p>
+        )}
+
+        <div className="dashboard-metrics">
+          <article className="dashboard-metric">
+            <span>{user?.role === "worker" ? "Total assigned jobs" : "Total bookings"}</span>
+            <strong>
+              {dashboardStats
+                ? dashboardStats.total_jobs ?? dashboardStats.total_bookings ?? 0
+                : "—"}
+            </strong>
+            <small>All your recorded requests</small>
+          </article>
+
+          <article className="dashboard-metric">
+            <span>{user?.role === "worker" ? "Active jobs" : "Active bookings"}</span>
+            <strong>
+              {dashboardStats
+                ? dashboardStats.active_jobs ?? dashboardStats.active_bookings ?? 0
+                : "—"}
+            </strong>
+            <small>Currently in progress</small>
+          </article>
+
+          <article className="dashboard-metric">
+            <span>{user?.role === "worker" ? "Completed jobs" : "Completed bookings"}</span>
+            <strong>
+              {dashboardStats
+                ? dashboardStats.completed_jobs ?? dashboardStats.completed_bookings ?? 0
+                : "—"}
+            </strong>
+            <small>Successfully completed</small>
+          </article>
+
+          <article className="dashboard-metric dashboard-metric-highlight">
+            <span>Completion rate</span>
+            <strong>{dashboardStats ? `${dashboardStats.completion_rate ?? 0}%` : "—"}</strong>
+            <small>Completed jobs ÷ completed and cancelled jobs</small>
+          </article>
+        </div>
+
+        {dashboardStats && (
+          <div className="dashboard-recent">
+            <div className="dashboard-recent-heading">
+              <h3>Recent activity</h3>
+              <span>{(dashboardStats.recent_requests || []).length} recent records</span>
+            </div>
+
+            {(dashboardStats.recent_requests || []).length ? (
+              <div className="dashboard-recent-list">
+                {dashboardStats.recent_requests.map((item) => (
+                  <article className="dashboard-recent-item" key={item.id}>
+                    <div className="dashboard-recent-icon" aria-hidden="true">✓</div>
+                    <div className="dashboard-recent-copy">
+                      <strong>{item.service || "Service request"}</strong>
+                      <span>
+                        {item.created_at ? formatIST(item.created_at) : "Date unavailable"}
+                      </span>
+                    </div>
+                    <span className={`dashboard-status status-${String(item.status || "requested").toLowerCase()}`}>
+                      {statusLabel(item.status)}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="helper-text">
+                No bookings recorded yet. Your activity will appear here.
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="dashboard-phone-panel">
+        <div>
+          <span className="eyebrow">ACCOUNT CONTACT</span>
+          <h3>Keep your phone number up to date</h3>
+          <p>
+            A valid phone number is required before creating a booking or accepting a job.
+          </p>
+        </div>
+        <form className="dashboard-phone-form" onSubmit={saveAccountPhone}>
+          <label htmlFor="dashboard-phone">Phone number</label>
+          <input
+            id="dashboard-phone"
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel"
+            minLength={10}
+            maxLength={15}
+            pattern="[0-9]{10,15}"
+            value={phoneInput}
+            onChange={(event) => setPhoneInput(event.target.value)}
+            placeholder="Enter 10–15 digits"
+            required
+          />
+          <button className="btn btn-primary" type="submit" disabled={phoneSaving}>
+            {phoneSaving ? "Saving..." : "Save phone number"}
+          </button>
+        </form>
       </section>
 
       {user?.role === "customer" ? (
