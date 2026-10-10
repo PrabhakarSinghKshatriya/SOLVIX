@@ -2510,3 +2510,240 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+
+/* SOLVIX_PRO_DASHBOARD_PHONE_V1 */
+.dashboard-overview {
+  margin: 28px 0;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 24px;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.055);
+}
+
+.dashboard-overview-heading,
+.dashboard-recent-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-overview-heading h2,
+.dashboard-recent-heading h3 {
+  margin: 6px 0;
+}
+
+.dashboard-overview-heading p {
+  margin: 6px 0 0;
+  opacity: 0.78;
+}
+
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.dashboard-metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 18px;
+  background: var(--card-bg, #f8fafc);
+}
+
+.dashboard-metric > span {
+  font-size: 0.88rem;
+  font-weight: 600;
+  opacity: 0.78;
+}
+
+.dashboard-metric strong {
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.dashboard-metric small {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  opacity: 0.72;
+}
+
+.dashboard-metric-highlight {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: linear-gradient(145deg, #ecfdf5, #f0fdfa);
+}
+
+.dashboard-recent {
+  margin-top: 28px;
+}
+
+.dashboard-recent-heading {
+  margin-bottom: 14px;
+}
+
+.dashboard-recent-heading span {
+  font-size: 0.82rem;
+  opacity: 0.7;
+}
+
+.dashboard-recent-list {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+}
+
+.dashboard-recent-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border-radius: 13px;
+  background: #ecfdf5;
+  color: #047857;
+  font-weight: 800;
+}
+
+.dashboard-recent-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+
+.dashboard-recent-copy strong {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-recent-copy span {
+  font-size: 0.82rem;
+  opacity: 0.7;
+}
+
+.dashboard-status {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dashboard-status.status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.dashboard-status.status-cancelled,
+.dashboard-status.status-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.dashboard-status.status-on_the_way,
+.dashboard-status.status-in_progress,
+.dashboard-status.status-arrived {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.dashboard-phone-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  align-items: center;
+  gap: 28px;
+  margin: 28px 0;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 22px;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.dashboard-phone-panel h3 {
+  margin: 8px 0;
+}
+
+.dashboard-phone-panel p {
+  margin: 0;
+  line-height: 1.65;
+  opacity: 0.78;
+}
+
+.dashboard-phone-form {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-phone-form label {
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.dashboard-phone-form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 11px;
+  background: var(--surface, #ffffff);
+  color: inherit;
+  font: inherit;
+}
+
+.dashboard-phone-form input:focus {
+  outline: 2px solid rgba(16, 185, 129, 0.45);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-phone-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-overview-heading,
+  .dashboard-recent-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-metrics {
+    gap: 10px;
+  }
+
+  .dashboard-metric {
+    padding: 15px;
+  }
+
+  .dashboard-recent-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .dashboard-status {
+    margin-left: 54px;
+  }
+}

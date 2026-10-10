@@ -1,4 +1,5 @@
 import logging
+import re
 from app.schemas.worker import (
     CreateWorkerProfileRequest,
     LocationUpdateRequest,
@@ -44,6 +45,7 @@ from app.config import settings
 from app.database.connection import get_database
 from app.models.user import UserModel
 from pymongo.errors import DuplicateKeyError
+from bson import ObjectId
 
 
 router = APIRouter(
@@ -491,6 +493,57 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "success": True,
         "user": current_user,
     }
+
+class UpdatePhoneRequest(BaseModel):
+    phone: str
+
+
+@router.patch("/phone")
+async def update_account_phone(
+    data: UpdatePhoneRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    # Accept digits only after removing common phone-number separators.
+    phone = re.sub(r"\\D", "", data.phone or "")
+    if not re.fullmatch(r"\\d{10,15}", phone):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Enter a valid phone number containing 10 to 15 digits.",
+        )
+
+    user_id = str(current_user.get("user_id", ""))
+    try:
+        object_id = ObjectId(user_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session is invalid. Please log in again.",
+        ) from exc
+
+    users = get_database()[UserModel.collection_name]
+    result = users.find_one_and_update(
+        {"_id": object_id, "is_active": {"$ne": False}},
+        {
+            "$set": {
+                "phone": phone,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+        return_document=True,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found.",
+        )
+
+    return {
+        "success": True,
+        "message": "Phone number updated successfully.",
+        "user": UserModel.serialize(result),
+    }
+
 
 @router.get("/customer-test")
 async def customer_test(

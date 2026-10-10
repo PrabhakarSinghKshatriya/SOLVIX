@@ -12,9 +12,35 @@ from app.services.notification_service import NotificationService
 from app.services.service_request_service import (
     ServiceRequestService,
 )
+from app.models.service_request import ServiceRequestModel
 
 
 logger = logging.getLogger(__name__)
+
+def _require_saved_phone(user_id: str, role_label: str) -> None:
+    """Require a usable phone number before creating/accepting a booking."""
+    users = get_database()["users"]
+
+    try:
+        user_doc = users.find_one(
+            {"_id": ObjectId(str(user_id))},
+            {"phone": 1, "is_active": 1},
+        )
+    except Exception:
+        user_doc = None
+
+    phone = str((user_doc or {}).get("phone") or "")
+    digits = "".join(character for character in phone if character.isdigit())
+
+    if not user_doc or len(digits) < 10 or len(digits) > 15:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Add a valid phone number to your {role_label} account "
+                "before continuing. Open your account phone settings and save it."
+            ),
+        )
+
 
 def _safe_notify(user_id, title, message, event_type, booking_id=None):
     if not user_id:
@@ -49,6 +75,11 @@ async def create_service_request(
         require_role("customer")
     ),
 ):
+    _require_saved_phone(
+        current_user["user_id"],
+        "customer",
+    )
+
     service = ServiceRequestService()
 
     request = service.create_request(
@@ -107,6 +138,79 @@ async def create_service_request(
         "matched_workers_count": matched_workers_count,
         "request": request,
     }
+
+
+
+
+# SOLVIX_PRIVATE_DASHBOARD_STATS_V1
+
+def _dashboard_stats(owner_field: str, owner_id: str, role: str):
+    db = get_database()
+    collection = db["service_requests"]
+
+    # The service-request collection name may be configured through the
+    # service itself; use that collection for consistent dashboard data.
+    service = ServiceRequestService()
+    collection = service.requests
+
+    if role == "worker":
+        query = {"assigned_worker_id": owner_id}
+    else:
+        query = {"customer_id": owner_id}
+
+    records = list(collection.find(query).sort("created_at", -1))
+    statuses = [str(record.get("status", "requested")) for record in records]
+
+    active_statuses = {
+        "accepted",
+        "confirmed",
+        "on_the_way",
+        "arrived",
+        "in_progress",
+    }
+    completed = statuses.count("completed")
+    cancelled = statuses.count("cancelled")
+    denominator = completed + cancelled
+
+    recent = [
+        ServiceRequestModel.serialize(record)
+        for record in records[:8]
+    ]
+
+    return {
+        "success": True,
+        "role": role,
+        "total_jobs" if role == "worker" else "total_bookings": len(records),
+        "active_jobs" if role == "worker" else "active_bookings": sum(
+            status in active_statuses for status in statuses
+        ),
+        "completed_jobs" if role == "worker" else "completed_bookings": completed,
+        "cancelled_jobs" if role == "worker" else "cancelled_bookings": cancelled,
+        "completion_rate": round(completed * 100 / denominator, 1) if denominator else 0,
+        "recent_requests": recent,
+    }
+
+
+@router.get("/worker/stats")
+async def get_worker_dashboard_stats(
+    current_user: dict = Depends(require_role("worker")),
+):
+    return _dashboard_stats(
+        "assigned_worker_id",
+        str(current_user["user_id"]),
+        "worker",
+    )
+
+
+@router.get("/customer/stats")
+async def get_customer_dashboard_stats(
+    current_user: dict = Depends(require_role("customer")),
+):
+    return _dashboard_stats(
+        "customer_id",
+        str(current_user["user_id"]),
+        "customer",
+    )
 
 
 @router.get("/worker/my-requests")
@@ -419,6 +523,12 @@ async def handle_worker_request(
     data: WorkerRequestAction,
     current_user: dict = Depends(require_role("worker")),
 ):
+    if data.action == "accept":
+        _require_saved_phone(
+            current_user["user_id"],
+            "worker",
+        )
+
     service = ServiceRequestService()
 
     try:
