@@ -1452,8 +1452,18 @@ function App() {
     const currentStatus = request.status || "pending";
     const requestLocation = getRequestLocation(request);
     const assignedWorkerId = request.assigned_worker_id;
+    const currentWorkerId = getUserId(user);
+    const isAssignedToCurrentWorker =
+      Boolean(assignedWorkerId) &&
+      String(assignedWorkerId) === String(currentWorkerId);
+    const isAssignedToAnotherWorker =
+      Boolean(assignedWorkerId) &&
+      String(assignedWorkerId) !== String(currentWorkerId);
+
     const canWorkerAct =
       user?.role === "worker" &&
+      !assignedWorkerId &&
+      currentStatus === "requested" &&
       (!request.worker_action || request.worker_action === "pending");
 
     return (
@@ -1554,18 +1564,39 @@ function App() {
           </div>
         )}
 
+        {user?.role === "worker" && isAssignedToAnotherWorker && (
+          <div className="request-notice" role="status">
+            <strong>Accepted by another worker</strong>
+            <p>This request has already been assigned. You cannot accept or update it.</p>
+          </div>
+        )}
+
+        {user?.role === "worker" && isAssignedToCurrentWorker && (
+          <div className="request-notice" role="status">
+            <strong>✓ This request is assigned to you</strong>
+          </div>
+        )}
+
         {canWorkerAct && (
           <div className="request-actions">
-            <button className="btn btn-primary" onClick={() => workerAction(request, "accept")} disabled={loading}>
+            <button
+              className="btn btn-primary"
+              onClick={() => workerAction(request, "accept")}
+              disabled={loading}
+            >
               ✓ Accept request
             </button>
-            <button className="btn btn-danger-outline" onClick={() => workerAction(request, "reject")} disabled={loading}>
+            <button
+              className="btn btn-danger-outline"
+              onClick={() => workerAction(request, "reject")}
+              disabled={loading}
+            >
               ✕ Reject
             </button>
           </div>
         )}
 
-        {user?.role === "worker" && (
+        {user?.role === "worker" && !isAssignedToAnotherWorker && (
           <div className="status-control worker-status-control">
             <select
               value={statusDrafts[requestId] || currentStatus}

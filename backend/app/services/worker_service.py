@@ -220,7 +220,6 @@ class WorkerService:
                 }
             },
             "is_active": True,
-            "availability": "available",
         })
 
         results = []
@@ -279,7 +278,6 @@ class WorkerService:
                 }
             },
             "is_active": True,
-            "availability": "available",
         })
 
         matched_workers = []
