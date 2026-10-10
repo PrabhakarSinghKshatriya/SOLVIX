@@ -88,7 +88,24 @@ def _otp_digest(email: str, otp: str) -> str:
 
 
 def _send_login_otp(email: str, otp: str) -> None:
+    # Log configuration status only; never log SMTP credentials.
+    logger.info(
+        "SOLVIX SMTP configuration: host=%s port=%s username_set=%s "
+        "password_set=%s tls=%s email_from_set=%s",
+        settings.smtp_host,
+        settings.smtp_port,
+        bool(settings.smtp_username),
+        bool(settings.smtp_password),
+        settings.smtp_use_tls,
+        bool(settings.email_from),
+    )
+
     if not settings.smtp_username or not settings.smtp_password:
+        logger.error(
+            "SOLVIX SMTP configuration missing: username_set=%s password_set=%s",
+            bool(settings.smtp_username),
+            bool(settings.smtp_password),
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email OTP is not configured. Set SMTP_USERNAME and SMTP_PASSWORD.",
