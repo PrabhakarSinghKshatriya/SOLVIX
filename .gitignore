@@ -70,3 +70,4 @@ backups/
 
 # Pytest cache
 .pytest_cache/
+.vercel
