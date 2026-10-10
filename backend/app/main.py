@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth.routes import router as auth_router
 from app.api.workers.routes import router as workers_router
 from app.api.requests.routes import router as requests_router
+from app.api.notifications.routes import router as notifications_router
+from app.api.subscriptions.routes import router as subscriptions_router
+from app.api.admin.routes import router as admin_router
 from app.config import settings
 from app.database.connection import check_database_connection, get_database
 
@@ -36,6 +39,15 @@ async def lifespan(app: FastAPI):
 
     logger.info("SOLVIX database indexes initialized successfully")
 
+    db["notifications"].create_index(
+        [("user_id", 1), ("created_at", -1)],
+        name="notifications_user_created"
+    )
+    db["notifications"].create_index(
+        [("user_id", 1), ("is_read", 1)],
+        name="notifications_user_unread"
+    )
+
     yield
 
 
@@ -59,6 +71,9 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(workers_router)
 app.include_router(requests_router)
+app.include_router(notifications_router)
+app.include_router(subscriptions_router)
+app.include_router(admin_router)
 
 
 @app.get("/")

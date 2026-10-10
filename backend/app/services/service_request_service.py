@@ -196,6 +196,36 @@ class ServiceRequestService:
 
                 return result
 
+            # SOLVIX_FREE_QUOTA_ENFORCEMENT_V1
+            from app.config import settings
+
+            worker_profile = self.db["workers"].find_one(
+                {"user_id": worker_id, "is_active": True},
+                session=session,
+            )
+
+            if not worker_profile:
+                raise ValueError("Active worker profile not found")
+
+            active_subscription = self.db["subscriptions"].find_one(
+                {
+                    "worker_id": worker_id,
+                    "status": "active",
+                    "expires_at": {"$gt": now},
+                },
+                sort=[("expires_at", -1)],
+                session=session,
+            )
+
+            free_used = int(worker_profile.get("free_opportunities_used", 0))
+            free_limit = settings.worker_free_opportunities
+
+            if not active_subscription and free_used >= free_limit:
+                raise ValueError(
+                    "You have used all free opportunities. "
+                    "Subscribe to continue accepting jobs."
+                )
+
             worker_result = self.db["workers"].update_one(
                 {
                     "user_id": worker_id,
@@ -239,6 +269,32 @@ class ServiceRequestService:
                 raise ValueError(
                     "Request was already processed"
                 )
+
+            if not active_subscription:
+                quota_update = self.db["workers"].update_one(
+                    {
+                        "user_id": worker_id,
+                        "is_active": True,
+                        "$or": (
+                            [
+                                {"free_opportunities_used": 0},
+                                {"free_opportunities_used": {"$exists": False}},
+                            ]
+                            if free_used == 0
+                            else [{"free_opportunities_used": free_used}]
+                        ),
+                    },
+                    {
+                        "$inc": {"free_opportunities_used": 1},
+                        "$set": {"updated_at": now},
+                    },
+                    session=session,
+                )
+
+                if quota_update.modified_count != 1:
+                    raise ValueError(
+                        "Free quota update failed. Please retry."
+                    )
 
             return result
 

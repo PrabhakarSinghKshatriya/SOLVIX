@@ -39,7 +39,7 @@ def get_current_user(
 
         role = user.get("role")
 
-        if role not in ("customer", "worker"):
+        if role not in ("customer", "worker", "admin"):
             raise unauthorized
 
         return {
@@ -66,3 +66,40 @@ def require_role(*allowed_roles: str) -> Callable:
         return current_user
 
     return role_checker
+
+
+def require_admin(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    from app.config import settings
+
+    allowed_emails = {
+        email.strip().lower()
+        for email in settings.admin_emails.split(",")
+        if email.strip()
+    }
+
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    db = get_database()
+    user = db["users"].find_one(
+        {"_id": ObjectId(current_user["user_id"])},
+        {"email": 1, "role": 1, "is_active": 1},
+    )
+
+    if (
+        not user
+        or not user.get("is_active", True)
+        or user.get("role") != "admin"
+        or user.get("email", "").strip().lower() not in allowed_emails
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    return {"user_id": str(user["_id"]), "role": "admin"}

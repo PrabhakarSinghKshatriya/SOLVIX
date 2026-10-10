@@ -115,6 +115,12 @@ function App() {
   const [workers, setWorkers] = useState([]);
   const [requests, setRequests] = useState([]);
 
+  // SOLVIX_NOTIFICATION_BELL_V1
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+
   const [booking, setBooking] = useState({
     service: "Plumber",
     description: "",
@@ -131,6 +137,12 @@ function App() {
 
   const [profileExists, setProfileExists] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+
+  // SOLVIX_SUBSCRIPTION_CHECKOUT_V1
+  const [subscriptionData, setSubscriptionData] = useState(null);
+  const [subscriptionPlans, setSubscriptionPlans] = useState([]);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState("");
 
   const [statusDrafts, setStatusDrafts] = useState({});
 
@@ -174,6 +186,83 @@ function App() {
     }
   }, []);
 
+  // Load notifications immediately and refresh every 15 seconds.
+  useEffect(() => {
+    let active = true;
+
+    const refreshNotifications = async () => {
+      if (!user || !localStorage.getItem("solvix_token")) {
+        if (active) {
+          setNotifications([]);
+          setUnreadCount(0);
+        }
+        return;
+      }
+
+      try {
+        const response = await api.get("/api/notifications?limit=50");
+        if (!active) return;
+
+        setNotifications(response.data?.notifications || []);
+        setUnreadCount(Number(response.data?.unread_count || 0));
+      } catch {
+        // Keep the dashboard usable if notifications are temporarily unavailable.
+      }
+    };
+
+    refreshNotifications();
+    const timer = window.setInterval(refreshNotifications, 15000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [user]);
+
+  const markNotificationRead = async (notification) => {
+    if (!notification?.id || notification.is_read) return;
+
+    // Update the UI immediately; restore the server state if the request fails.
+    setNotifications((old) =>
+      old.map((item) =>
+        item.id === notification.id ? { ...item, is_read: true } : item
+      )
+    );
+    setUnreadCount((old) => Math.max(0, old - 1));
+
+    try {
+      await api.patch(
+        `/api/notifications/${encodeURIComponent(notification.id)}/read`
+      );
+    } catch {
+      setNotifications((old) =>
+        old.map((item) =>
+          item.id === notification.id ? { ...item, is_read: false } : item
+        )
+      );
+      setUnreadCount((old) => old + 1);
+      flashError("Could not mark the notification as read. Please try again.");
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    const previousNotifications = notifications;
+    const previousUnreadCount = unreadCount;
+
+    setNotifications((old) =>
+      old.map((item) => ({ ...item, is_read: true }))
+    );
+    setUnreadCount(0);
+
+    try {
+      await api.patch("/api/notifications/read-all");
+    } catch {
+      setNotifications(previousNotifications);
+      setUnreadCount(previousUnreadCount);
+      flashError("Could not mark notifications as read. Please try again.");
+    }
+  };
+
   const saveSession = (token, loggedInUser) => {
     localStorage.setItem("solvix_token", token);
     localStorage.setItem("solvix_user", JSON.stringify(loggedInUser));
@@ -189,6 +278,9 @@ function App() {
     setPage("home");
     setWorkers([]);
     setRequests([]);
+    setNotifications([]);
+    setUnreadCount(0);
+    setNotificationsOpen(false);
     setProfileExists(false);
     setCoords({ latitude: "", longitude: "" });
     flashNotice("You have been logged out successfully.");
@@ -441,6 +533,203 @@ function App() {
     }
   };
 
+  // SOLVIX_SUBSCRIPTION_CHECKOUT_V1
+  const loadSubscription = async (showError = false) => {
+    if (user?.role !== "worker") return;
+
+    setSubscriptionLoading(true);
+
+    try {
+      const plansResponse = await api.get("/api/subscriptions/plans");
+      setSubscriptionPlans(
+        Array.isArray(plansResponse.data?.plans)
+          ? plansResponse.data.plans
+          : []
+      );
+
+      const subscriptionResponse = await api.get("/api/subscriptions/me");
+      setSubscriptionData(subscriptionResponse.data);
+    } catch (err) {
+      if (showError) {
+        flashError(getError(err));
+      }
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.role === "worker") {
+      loadSubscription();
+    } else {
+      setSubscriptionData(null);
+      setSubscriptionPlans([]);
+    }
+  }, [user]);
+
+  const loadRazorpayCheckout = async () => {
+    if (window.Razorpay) return true;
+
+    const existingScript = document.querySelector(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
+    );
+
+    if (existingScript) {
+      if (existingScript.dataset.loaded === "true" && window.Razorpay) {
+        return true;
+      }
+
+      await new Promise((resolve, reject) => {
+        existingScript.addEventListener("load", () => resolve(true), {
+          once: true,
+        });
+        existingScript.addEventListener(
+          "error",
+          () => reject(new Error("Razorpay Checkout could not be loaded.")),
+          { once: true }
+        );
+      });
+
+      return Boolean(window.Razorpay);
+    }
+
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+
+      script.onload = () => {
+        script.dataset.loaded = "true";
+        resolve(true);
+      };
+
+      script.onerror = () => {
+        script.remove();
+        reject(new Error("Razorpay Checkout could not be loaded."));
+      };
+
+      document.body.appendChild(script);
+    });
+
+    return Boolean(window.Razorpay);
+  };
+
+  const startSubscriptionCheckout = async (planName) => {
+    if (user?.role !== "worker") {
+      flashError("Please log in as a worker to purchase a subscription.");
+      return;
+    }
+
+    clearMessages();
+    setCheckoutPlan(planName);
+
+    try {
+      const checkoutReady = await loadRazorpayCheckout();
+
+      if (!checkoutReady || !window.Razorpay) {
+        throw new Error("Razorpay Checkout is unavailable. Please retry.");
+      }
+
+      const orderResponse = await api.post(
+        "/api/subscriptions/create-order",
+        { plan: planName }
+      );
+
+      const order = orderResponse.data;
+
+      if (!order?.key_id || !order?.order_id || !order?.amount) {
+        throw new Error("The server returned an incomplete payment order.");
+      }
+
+      await new Promise((resolve, reject) => {
+        let finished = false;
+
+        const finish = () => {
+          if (finished) return false;
+          finished = true;
+          setCheckoutPlan("");
+          return true;
+        };
+
+        const options = {
+          key: order.key_id,
+          amount: order.amount,
+          currency: order.currency || "INR",
+          name: "SOLVIX",
+          description:
+            planName === "yearly"
+              ? "Worker yearly subscription"
+              : "Worker monthly subscription",
+          order_id: order.order_id,
+          handler: async (payment) => {
+            try {
+              const verification = await api.post(
+                "/api/subscriptions/verify-payment",
+                {
+                  razorpay_order_id: payment.razorpay_order_id,
+                  razorpay_payment_id: payment.razorpay_payment_id,
+                  razorpay_signature: payment.razorpay_signature,
+                }
+              );
+
+              if (verification.data?.success) {
+                if (finish()) {
+                  flashNotice(
+                    "Payment verified. Your subscription has been activated."
+                  );
+                  await loadSubscription();
+                }
+                resolve(true);
+              } else {
+                throw new Error(
+                  "Payment verification was not confirmed by the server."
+                );
+              }
+            } catch (err) {
+              finish();
+              flashError(
+                "Payment was submitted, but verification is pending: " +
+                  getError(err)
+              );
+              reject(err);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              if (finish()) resolve(false);
+            },
+          },
+          theme: {
+            color: "#176b52",
+          },
+        };
+
+        const checkout = new window.Razorpay(options);
+
+        checkout.on("payment.failed", (event) => {
+          if (finish()) {
+            flashError(
+              event?.error?.description ||
+                "Payment failed. You can retry the checkout."
+            );
+            reject(
+              new Error(
+                event?.error?.description || "Razorpay payment failed."
+              )
+            );
+          }
+        });
+
+        checkout.open();
+      });
+    } catch (err) {
+      setCheckoutPlan("");
+      if (err?.response || err?.message) {
+        flashError(getError(err));
+      }
+    }
+  };
+
   const loadWorkerProfile = async () => {
     clearMessages();
     setProfileLoading(true);
@@ -663,6 +952,103 @@ function App() {
       <div className="nav-actions">
         {user ? (
           <>
+            <div className="notification-control">
+              <button
+                type="button"
+                className="notification-bell"
+                aria-label={`Notifications, ${unreadCount} unread`}
+                aria-expanded={notificationsOpen}
+                title="Notifications"
+                onClick={() => {
+                  setNotificationsOpen((old) => !old);
+                  if (!notificationsOpen) {
+                    setNotificationsLoading(true);
+                    api.get("/api/notifications?limit=50")
+                      .then((response) => {
+                        setNotifications(response.data?.notifications || []);
+                        setUnreadCount(Number(response.data?.unread_count || 0));
+                      })
+                      .catch(() => {})
+                      .finally(() => setNotificationsLoading(false));
+                  }
+                }}
+              >
+                <span aria-hidden="true">🔔</span>
+                {unreadCount > 0 && (
+                  <span className="notification-badge">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <section
+                  className="notification-dropdown"
+                  aria-label="Your notifications"
+                >
+                  <div className="notification-heading">
+                    <div>
+                      <strong>Notifications</strong>
+                      <small>
+                        {unreadCount} unread
+                      </small>
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        className="notification-mark-all"
+                        onClick={markAllNotificationsRead}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="notification-list">
+                    {notificationsLoading && notifications.length === 0 ? (
+                      <p className="notification-empty">Loading notifications...</p>
+                    ) : notifications.length === 0 ? (
+                      <p className="notification-empty">
+                        You're all caught up. New updates will appear here.
+                      </p>
+                    ) : (
+                      notifications.map((notification) => (
+                        <button
+                          type="button"
+                          key={notification.id}
+                          className={`notification-item ${
+                            notification.is_read ? "is-read" : "is-unread"
+                          }`}
+                          onClick={() => markNotificationRead(notification)}
+                        >
+                          <span className="notification-item-icon" aria-hidden="true">
+                            {notification.is_read ? "✓" : "●"}
+                          </span>
+                          <span className="notification-item-content">
+                            <strong>{notification.title}</strong>
+                            <span>{notification.message}</span>
+                            <small>
+                              {notification.created_at
+                                ? new Date(notification.created_at).toLocaleString(
+                                    "en-IN",
+                                    {
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    }
+                                  )
+                                : ""}
+                            </small>
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+              )}
+            </div>
+
             <span className="user-chip">
               <span className="avatar">{user.name?.charAt(0)?.toUpperCase() || "S"}</span>
               <span className="user-chip-text">
@@ -1037,6 +1423,126 @@ function App() {
               <button className="btn btn-primary" onClick={updateWorkerLocation} disabled={loading}>Save service location</button>
             </section>
           </div>
+
+          {/* SOLVIX_SUBSCRIPTION_CHECKOUT_V1 */}
+          <section className="section-block">
+            <div className="panel subscription-panel">
+              <span className="eyebrow">SOLVIX PRO</span>
+              <h2>Subscription &amp; free opportunities</h2>
+              <p>
+                Your first {subscriptionData?.free_opportunities?.total ?? 5}
+                {" "}job opportunities are free. A paid plan gives you continued
+                access to accepting jobs.
+              </p>
+
+              {subscriptionLoading && (
+                <p role="status">Loading your subscription details...</p>
+              )}
+
+              {subscriptionData && (
+                <div className="subscription-summary">
+                  <div className="subscription-stat">
+                    <span>Free opportunities remaining</span>
+                    <strong>
+                      {subscriptionData.free_opportunities?.remaining ?? 0}
+                      {" / "}
+                      {subscriptionData.free_opportunities?.total ?? 5}
+                    </strong>
+                  </div>
+
+                  <div className="subscription-stat">
+                    <span>Current plan</span>
+                    <strong>
+                      {subscriptionData.has_paid_access
+                        ? statusLabel(subscriptionData.subscription?.plan)
+                        : "Free plan"}
+                    </strong>
+                  </div>
+
+                  {subscriptionData.subscription?.expires_at && (
+                    <div className="subscription-stat">
+                      <span>Subscription expires</span>
+                      <strong>
+                        {new Date(
+                          subscriptionData.subscription.expires_at
+                        ).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!profileExists && (
+                <p className="helper-text">
+                  If you have not created your worker profile yet, create it
+                  before purchasing a subscription.
+                </p>
+              )}
+
+              <div className="subscription-plans">
+                {subscriptionPlans.map((plan) => {
+                  const planName = plan.plan;
+                  const price =
+                    plan.amount_rupees ??
+                    (Number(plan.amount || 0) / 100);
+
+                  return (
+                    <article className="subscription-plan-card" key={planName}>
+                      <span className="eyebrow">
+                        {planName === "yearly" ? "BEST VALUE" : "FLEXIBLE"}
+                      </span>
+                      <h3>
+                        {planName === "yearly" ? "Yearly plan" : "Monthly plan"}
+                      </h3>
+                      <p className="subscription-price">
+                        ₹{Number(price).toLocaleString("en-IN")}
+                        <span>
+                          / {planName === "yearly" ? "year" : "month"}
+                        </span>
+                      </p>
+                      <p>
+                        {planName === "yearly"
+                          ? "Access for 365 days."
+                          : "Access for 30 days."}
+                      </p>
+                      <button
+                        className="btn btn-primary full-width"
+                        type="button"
+                        disabled={
+                          Boolean(checkoutPlan) ||
+                          !profileExists ||
+                          subscriptionLoading
+                        }
+                        onClick={() => startSubscriptionCheckout(planName)}
+                      >
+                        {checkoutPlan === planName
+                          ? "Opening secure checkout..."
+                          : `Choose ${planName} plan`}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <p className="helper-text">
+                Payments are processed by Razorpay. Your paid access is
+                activated only after server-side payment verification.
+              </p>
+
+              <button
+                className="btn btn-outline"
+                type="button"
+                onClick={() => loadSubscription(true)}
+                disabled={subscriptionLoading}
+              >
+                Refresh subscription status
+              </button>
+            </div>
+          </section>
 
           <section className="section-block">
             <div className="section-heading">

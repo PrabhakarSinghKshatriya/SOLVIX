@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "solvix"
     google_client_id: str = ""
+    admin_emails: str = ""
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+    subscription_monthly_price_paise: int = 15000
+    subscription_yearly_price_paise: int = 150000
+    subscription_currency: str = "INR"
+    worker_free_opportunities: int = 5
 
     frontend_url: str = "http://localhost:5173"
 

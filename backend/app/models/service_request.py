@@ -42,10 +42,6 @@ class ServiceRequestModel:
 
             "match_status": "pending",
 
-            "matched_worker_ids": [],
-
-            "match_status": "pending",
-
             "created_at": now,
             "updated_at": now,
         }
@@ -68,20 +64,10 @@ class ServiceRequestModel:
                 "assigned_worker_id"
             ),
             "matched_worker_ids": document.get(
-                "matched_worker_ids",
-                []
+                "matched_worker_ids", []
             ),
             "match_status": document.get(
-                "match_status",
-                "pending"
-            ),
-            "matched_worker_ids": document.get(
-                "matched_worker_ids",
-                []
-            ),
-            "match_status": document.get(
-                "match_status",
-                "pending"
+                "match_status", "pending"
             ),
             "created_at": document.get(
                 "created_at"

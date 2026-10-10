@@ -5,12 +5,29 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies import get_current_user, require_role
 from app.schemas.service_request import CreateServiceRequest, StatusTransitionRequest, WorkerRequestAction
 from app.services.worker_service import WorkerService
+from app.services.notification_service import NotificationService
 from app.services.service_request_service import (
     ServiceRequestService,
 )
 
 
 logger = logging.getLogger(__name__)
+
+def _safe_notify(user_id, title, message, event_type, booking_id=None):
+    if not user_id:
+        return
+    try:
+        NotificationService().create_notification(
+            user_id=str(user_id),
+            title=title,
+            message=message,
+            event_type=event_type,
+            booking_id=str(booking_id) if booking_id else None,
+        )
+    except Exception:
+        logger.exception("Notification delivery failed: %s", event_type)
+
+
 
 
 router = APIRouter(
@@ -61,6 +78,19 @@ async def create_service_request(
             if matched_request:
                 request = matched_request
                 matched_workers_count = len(workers)
+
+                for worker in workers:
+                    worker_id = worker.get("user_id")
+                    if worker_id:
+                        _safe_notify(
+                            worker_id,
+                            "New service opportunity",
+                            "A customer has requested "
+                            + data.service
+                            + ". Open SOLVIX to review it.",
+                            "booking_created",
+                            request_id,
+                        )
 
     except Exception:
         logger.exception(
@@ -167,6 +197,27 @@ async def update_request_status(
                 detail="Service request not found",
             )
 
+        labels = {
+            "confirmed": "Booking confirmed",
+            "on_the_way": "Worker is on the way",
+            "arrived": "Worker has arrived",
+            "in_progress": "Service has started",
+            "completed": "Service completed",
+            "cancelled": "Booking cancelled",
+        }
+        recipient_id = (
+            request.get("customer_id")
+            if current_user["role"] == "worker"
+            else request.get("assigned_worker_id")
+        )
+        _safe_notify(
+            recipient_id,
+            labels.get(data.status, "Booking updated"),
+            "Booking status changed to " + data.status.replace("_", " ") + ".",
+            "booking_" + data.status,
+            request_id,
+        )
+
         return {
             "success": True,
             "message": "Request status updated successfully",
@@ -260,6 +311,31 @@ async def handle_worker_request(
             worker_id=current_user["user_id"],
             action=data.action,
         )
+
+        if not request:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Request not found or no longer available",
+            )
+
+        if data.action == "accept":
+            _safe_notify(
+                request.get("customer_id"),
+                "Worker accepted your booking",
+                "A worker accepted your "
+                + request.get("service", "service")
+                + " request.",
+                "booking_accepted",
+                request_id,
+            )
+        else:
+            _safe_notify(
+                request.get("customer_id"),
+                "Worker declined the booking",
+                "A worker declined your request. You can look for another worker.",
+                "booking_rejected",
+                request_id,
+            )
 
         return {
             "success": True,
