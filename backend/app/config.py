@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_database: str = "solvix"
     google_client_id: str = ""
+
+    # Email OTP delivery
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    email_from: str = ""
+    smtp_use_tls: bool = True
     admin_emails: str = ""
     razorpay_key_id: str = ""
     razorpay_key_secret: str = ""

@@ -147,6 +147,10 @@ function App() {
 
   const [page, setPage] = useState("home");
   const [authMode, setAuthMode] = useState("login");
+  // SOLVIX_EMAIL_OTP_PASSWORD_RESET_V1
+  const [authStep, setAuthStep] = useState("credentials");
+  const [authOtp, setAuthOtp] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -433,42 +437,75 @@ function App() {
     clearMessages();
     setLoading(true);
 
+    const email = authForm.email.trim().toLowerCase();
+
     try {
-      if (authMode === "register") {
+      if (authStep === "login-otp") {
+        const response = await api.post("/api/auth/login/verify-otp", {
+          email,
+          otp: authOtp,
+        });
+
+        if (!response.data?.access_token || !response.data?.user) {
+          throw new Error("OTP verification did not return a valid session.");
+        }
+
+        saveSession(response.data.access_token, response.data.user);
+        setAuthOtp("");
+        flashNotice("Email verified. Welcome back to SOLVIX!");
+      } else if (authStep === "forgot") {
+        await api.post("/api/auth/forgot-password", { email });
+
+        setAuthStep("reset");
+        setAuthOtp("");
+        flashNotice(
+          "If an account exists for this email, a password-reset code will be sent shortly."
+        );
+      } else if (authStep === "reset") {
+        await api.post("/api/auth/reset-password", {
+          email,
+          otp: authOtp,
+          new_password: authForm.password,
+        });
+
+        setAuthStep("credentials");
+        setAuthMode("login");
+        setAuthOtp("");
+        setAuthForm((old) => ({ ...old, password: "" }));
+        flashNotice("Password reset successfully. Please log in.");
+      } else if (authMode === "register") {
         await api.post("/api/auth/register", {
           name: authForm.name.trim(),
-          email: authForm.email.trim(),
+          email,
           password: authForm.password,
           phone: authForm.phone.trim() || undefined,
           role: authForm.role,
         });
 
-        const loginResponse = await api.post("/api/auth/login", {
-          email: authForm.email.trim(),
-          password: authForm.password,
-        });
-
-        const token = loginResponse.data.access_token;
-        const loggedInUser = loginResponse.data.user;
-
-        if (!token || !loggedInUser) {
-          throw new Error("Registration succeeded, but automatic login failed.");
-        }
-
-        saveSession(token, loggedInUser);
-        flashNotice("Your SOLVIX account has been created successfully.");
+        setAuthMode("login");
+        setAuthStep("credentials");
+        setAuthForm((old) => ({
+          ...old,
+          name: "",
+          password: "",
+          phone: "",
+        }));
+        flashNotice("Account created successfully. Please log in to verify your email.");
       } else {
         const response = await api.post("/api/auth/login", {
-          email: authForm.email.trim(),
+          email,
           password: authForm.password,
         });
 
-        if (!response.data.access_token || !response.data.user) {
-          throw new Error("The server did not return a valid login session.");
+        if (response.data?.otp_required) {
+          setAuthStep("login-otp");
+          setAuthOtp("");
+          flashNotice("Enter the verification code sent to your email.");
+        } else {
+          throw new Error(
+            "OTP verification is not enabled on the connected server. Please try again after the backend is updated."
+          );
         }
-
-        saveSession(response.data.access_token, response.data.user);
-        flashNotice("Welcome back to SOLVIX!");
       }
     } catch (err) {
       flashError(getError(err));
@@ -1466,6 +1503,21 @@ function App() {
       currentStatus === "requested" &&
       (!request.worker_action || request.worker_action === "pending");
 
+    const availableStatuses =
+      user?.role === "customer"
+        ? ({
+            accepted: ["confirmed", "cancelled"],
+            confirmed: ["cancelled"],
+          }[currentStatus] || [])
+        : user?.role === "worker" && isAssignedToCurrentWorker
+          ? ({
+              confirmed: ["on_the_way", "cancelled"],
+              on_the_way: ["arrived", "cancelled"],
+              arrived: ["in_progress", "cancelled"],
+              in_progress: ["completed", "cancelled"],
+            }[currentStatus] || [])
+          : [];
+
     return (
       <article className="request-card" key={requestId || JSON.stringify(request)}>
         <div className="request-heading">
@@ -1516,11 +1568,11 @@ function App() {
                   setStatusDrafts((old) => ({ ...old, [requestId]: e.target.value }))
                 }
               >
-                {STATUSES.map((status) => (
+                {availableStatuses.map((status) => (
                   <option key={status} value={status}>{statusLabel(status)}</option>
                 ))}
               </select>
-              <button className="btn btn-primary" onClick={() => updateRequestStatus(request)} disabled={loading}>
+              <button className="btn btn-primary" onClick={() => updateRequestStatus(request)} disabled={loading || availableStatuses.length === 0}>
                 Update
               </button>
             </div>
@@ -1596,7 +1648,7 @@ function App() {
           </div>
         )}
 
-        {user?.role === "worker" && !isAssignedToAnotherWorker && (
+        {user?.role === "worker" && isAssignedToCurrentWorker && availableStatuses.length > 0 && (
           <div className="status-control worker-status-control">
             <select
               value={statusDrafts[requestId] || currentStatus}
@@ -1604,11 +1656,11 @@ function App() {
                 setStatusDrafts((old) => ({ ...old, [requestId]: e.target.value }))
               }
             >
-              {STATUSES.map((status) => (
+              {availableStatuses.map((status) => (
                 <option key={status} value={status}>{statusLabel(status)}</option>
               ))}
             </select>
-            <button className="btn btn-primary" onClick={() => updateRequestStatus(request)} disabled={loading}>
+            <button className="btn btn-primary" onClick={() => updateRequestStatus(request)} disabled={loading || availableStatuses.length === 0}>
               Update status
             </button>
           </div>
@@ -2032,31 +2084,142 @@ function App() {
       <section className="auth-form-wrap">
         <button className="back-link" onClick={() => setPage("home")}>← Back to home</button>
         <div className="auth-form-heading">
-          <span className="eyebrow">{authMode === "login" ? "WELCOME BACK" : "GET STARTED"}</span>
-          <h2>{authMode === "login" ? "Log in to SOLVIX" : "Create your account"}</h2>
-          <p>{authMode === "login" ? "Enter your details to continue." : "Join your local service community."}</p>
+          <span className="eyebrow">
+            {authStep === "login-otp"
+              ? "VERIFY YOUR EMAIL"
+              : authStep === "forgot"
+                ? "ACCOUNT RECOVERY"
+                : authStep === "reset"
+                  ? "RESET PASSWORD"
+                  : authMode === "login"
+                    ? "WELCOME BACK"
+                    : "GET STARTED"}
+          </span>
+          <h2>
+            {authStep === "login-otp"
+              ? "Enter login OTP"
+              : authStep === "forgot"
+                ? "Forgot password?"
+                : authStep === "reset"
+                  ? "Choose a new password"
+                  : authMode === "login"
+                    ? "Log in to SOLVIX"
+                    : "Create your account"}
+          </h2>
+          <p>
+            {authStep === "login-otp"
+              ? `Enter the 6-digit code sent to ${authForm.email}.`
+              : authStep === "forgot"
+                ? "Enter your registered email to request a reset code."
+                : authStep === "reset"
+                  ? "Enter the reset code and your new password."
+                  : authMode === "login"
+                    ? "Enter your details to continue."
+                    : "Join your local service community."}
+          </p>
         </div>
 
-        <div className="auth-switch">
-          <button className={authForm.role === "customer" ? "active" : ""} onClick={() => setAuthForm((old) => ({ ...old, role: "customer" }))}>I'm a customer</button>
-          <button className={authForm.role === "worker" ? "active" : ""} onClick={() => setAuthForm((old) => ({ ...old, role: "worker" }))}>I'm a professional</button>
-        </div>
+        {authStep === "credentials" && (
+          <div className="auth-switch">
+            <button type="button" className={authForm.role === "customer" ? "active" : ""} onClick={() => setAuthForm((old) => ({ ...old, role: "customer" }))}>I'm a customer</button>
+            <button type="button" className={authForm.role === "worker" ? "active" : ""} onClick={() => setAuthForm((old) => ({ ...old, role: "worker" }))}>I'm a professional</button>
+          </div>
+        )}
 
         <form className="auth-form" onSubmit={handleAuth}>
-          {authMode === "register" && (
+          {authStep === "credentials" && authMode === "register" && (
             <label>Full name<input name="name" required minLength="2" maxLength="100" autoComplete="name" value={authForm.name} onChange={updateAuthField} placeholder="Your full name" /></label>
           )}
-          <label>Email address<input type="email" name="email" required autoComplete="email" value={authForm.email} onChange={updateAuthField} placeholder="you@example.com" /></label>
-          {authMode === "register" && (
-            <label>Phone number <span className="optional">(optional)</span><input type="tel" name="phone" autoComplete="tel" value={authForm.phone} onChange={updateAuthField} placeholder="Your contact number" /></label>
+
+          <label>
+            Email address
+            <input
+              type="email"
+              name="email"
+              required
+              autoComplete="email"
+              readOnly={authStep === "login-otp" || authStep === "reset"}
+              value={authForm.email}
+              onChange={updateAuthField}
+              placeholder="you@example.com"
+            />
+          </label>
+
+          {authStep === "credentials" && authMode === "register" && (
+            <label>Phone number<input type="tel" name="phone" required minLength={10} maxLength={15} pattern="[0-9]{10,15}" autoComplete="tel" value={authForm.phone} onChange={updateAuthField} placeholder="Enter 10–15 digits" /></label>
           )}
-          <label>Password<input type="password" name="password" required minLength="8" maxLength="128" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authForm.password} onChange={updateAuthField} placeholder="At least 8 characters" /></label>
+
+          {authStep === "credentials" && authMode !== "register" && (
+            <label>Password<input type="password" name="password" required minLength="8" maxLength="128" autoComplete="current-password" value={authForm.password} onChange={updateAuthField} placeholder="Your password" /></label>
+          )}
+
+          {authStep === "credentials" && authMode === "register" && (
+            <label>Password<input type="password" name="password" required minLength="8" maxLength="128" autoComplete="new-password" value={authForm.password} onChange={updateAuthField} placeholder="At least 8 characters" /></label>
+          )}
+
+          {(authStep === "login-otp" || authStep === "reset") && (
+            <label>
+              {authStep === "login-otp" ? "Login verification code" : "Password-reset code"}
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                minLength={6}
+                maxLength={6}
+                required
+                value={authOtp}
+                onChange={(event) => setAuthOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="Enter 6-digit OTP"
+              />
+            </label>
+          )}
+
+          {authStep === "reset" && (
+            <label>
+              New password
+              <input
+                type="password"
+                name="password"
+                required
+                minLength={8}
+                maxLength={128}
+                autoComplete="new-password"
+                value={authForm.password}
+                onChange={updateAuthField}
+                placeholder="At least 8 characters"
+              />
+            </label>
+          )}
+
+          {authStep === "forgot" && (
+            <p className="auth-terms">We'll show the same confirmation whether or not the email belongs to an account.</p>
+          )}
+
           <button className="btn btn-primary full-width auth-submit" type="submit" disabled={loading}>
-            {loading ? "Please wait..." : authMode === "login" ? "Log in →" : "Create account →"}
+            {loading
+              ? "Please wait..."
+              : authStep === "login-otp"
+                ? "Verify and log in →"
+                : authStep === "forgot"
+                  ? "Send reset code →"
+                  : authStep === "reset"
+                    ? "Reset password →"
+                    : authMode === "login"
+                      ? "Log in →"
+                      : "Create account →"}
           </button>
         </form>
 
-        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+        {authStep === "credentials" && authMode === "login" && (
+          <p className="auth-alternate">
+            <button type="button" onClick={() => { clearMessages(); setAuthStep("forgot"); setAuthOtp(""); }}>
+              Forgot password?
+            </button>
+          </p>
+        )}
+
+        {authStep === "credentials" && import.meta.env.VITE_GOOGLE_CLIENT_ID && (
           <div className="google-login-wrap" style={{ display: "flex", justifyContent: "center", margin: "18px 0" }}>
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
@@ -2069,9 +2232,18 @@ function App() {
         )}
 
         <p className="auth-alternate">
-          {authMode === "login" ? "New to SOLVIX?" : "Already have an account?"}
-          <button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); clearMessages(); }}>
-            {authMode === "login" ? "Create an account" : "Log in"}
+          {authStep !== "credentials" ? "Changed your mind?" : authMode === "login" ? "New to SOLVIX?" : "Already have an account?"}
+          <button
+            type="button"
+            onClick={() => {
+              clearMessages();
+              setAuthOtp("");
+              setAuthStep("credentials");
+              setAuthMode("login");
+              setAuthForm((old) => ({ ...old, password: "" }));
+            }}
+          >
+            {authStep !== "credentials" ? "Back to login" : authMode === "login" ? "Create an account" : "Log in"}
           </button>
         </p>
         <p className="auth-terms">By continuing, you agree to use SOLVIX responsibly and provide accurate account details.</p>
