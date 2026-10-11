@@ -183,7 +183,15 @@ class ServiceRequestService:
                             "status": "rejected",
                             "match_status": "rejected",
                             "updated_at": now,
-                        }
+                        },
+                        "$push": {
+                            "status_history": {
+                                "status": "rejected",
+                                "timestamp": now,
+                                "actor_id": worker_id,
+                                "actor_role": "worker",
+                            }
+                        },
                     },
                     return_document=ReturnDocument.AFTER,
                     session=session,
@@ -258,7 +266,15 @@ class ServiceRequestService:
                         "assigned_worker_id": worker_id,
                         "match_status": "assigned",
                         "updated_at": now,
-                    }
+                    },
+                    "$push": {
+                        "status_history": {
+                            "status": "accepted",
+                            "timestamp": now,
+                            "actor_id": worker_id,
+                            "actor_role": "worker",
+                        }
+                    },
                 },
                 return_document=ReturnDocument.AFTER,
                 session=session,
@@ -413,6 +429,14 @@ class ServiceRequestService:
                 },
                 {
                     "$set": update_fields,
+                    "$push": {
+                        "status_history": {
+                            "status": new_status,
+                            "timestamp": now,
+                            "actor_id": user_id,
+                            "actor_role": user_role,
+                        }
+                    },
                 },
                 return_document=ReturnDocument.AFTER,
                 session=session,

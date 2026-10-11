@@ -1643,11 +1643,53 @@ function App() {
       currentStatus === "requested" &&
       (!request.worker_action || request.worker_action === "pending");
 
-    const availableStatuses =
-          user?.role === "customer" ||
-          (user?.role === "worker" && isAssignedToCurrentWorker)
-            ? REQUEST_STATUS_OPTIONS
-            : [];
+    // Keep the dropdown aligned with backend status-transition rules.
+    const allowedStatusTransitions = {
+      requested: {
+        customer: ["cancelled"],
+        worker: [],
+      },
+      accepted: {
+        customer: ["confirmed", "cancelled"],
+        worker: ["cancelled", "rejected"],
+      },
+      confirmed: {
+        customer: ["cancelled"],
+        worker: ["on_the_way", "cancelled"],
+      },
+      on_the_way: {
+        customer: ["cancelled"],
+        worker: ["arrived", "cancelled"],
+      },
+      arrived: {
+        customer: ["cancelled"],
+        worker: ["in_progress", "cancelled"],
+      },
+      in_progress: {
+        customer: ["cancelled"],
+        worker: ["completed", "cancelled"],
+      },
+      completed: {
+        customer: [],
+        worker: [],
+      },
+      cancelled: {
+        customer: [],
+        worker: [],
+      },
+      rejected: {
+        customer: [],
+        worker: [],
+      },
+    };
+
+    const canManageRequestStatus =
+      user?.role === "customer" ||
+      (user?.role === "worker" && isAssignedToCurrentWorker);
+
+    const availableStatuses = canManageRequestStatus
+      ? (allowedStatusTransitions[currentStatus]?.[user.role] || [])
+      : [];
 
     return (
       <article className="request-card" key={requestId || JSON.stringify(request)}>
@@ -1792,7 +1834,10 @@ function App() {
                 setStatusDrafts((old) => ({ ...old, [requestId]: e.target.value }))
               }
             >
-              {availableStatuses.map((status) => (
+              <option value={currentStatus} disabled>
+                Current: {statusLabel(currentStatus)}
+              </option>
+              {availableStatuses.filter((status) => status !== currentStatus).map((status) => (
                 <option key={status} value={status}>{statusLabel(status)}</option>
               ))}
             </select>

@@ -44,6 +44,14 @@ class ServiceRequestModel:
 
             "created_at": now,
             "updated_at": now,
+            "status_history": [
+                {
+                    "status": "requested",
+                    "timestamp": now,
+                    "actor_id": customer_id,
+                    "actor_role": "customer",
+                }
+            ],
         }
 
     @staticmethod
@@ -75,4 +83,5 @@ class ServiceRequestModel:
             "updated_at": document.get(
                 "updated_at"
             ),
+            "status_history": document.get("status_history", []),
         }

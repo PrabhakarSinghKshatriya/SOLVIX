@@ -32,7 +32,7 @@ def _require_saved_phone(user_id: str, role_label: str) -> None:
     phone = str((user_doc or {}).get("phone") or "")
     digits = "".join(character for character in phone if character.isdigit())
 
-    if not user_doc or len(digits) < 10 or len(digits) > 15:
+    if not user_doc or len(digits) != 10:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
