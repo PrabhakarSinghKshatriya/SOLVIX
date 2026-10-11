@@ -130,6 +130,18 @@ function notificationTypeLabel(eventType) {
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const REQUEST_STATUS_OPTIONS = [
+  "requested",
+  "accepted",
+  "confirmed",
+  "on_the_way",
+  "arrived",
+  "in_progress",
+  "completed",
+  "cancelled",
+  "rejected",
+];
+
 function statusLabel(value) {
   return String(value || "pending")
     .replaceAll("_", " ")
@@ -1615,19 +1627,10 @@ function App() {
       (!request.worker_action || request.worker_action === "pending");
 
     const availableStatuses =
-      user?.role === "customer"
-        ? ({
-            accepted: ["confirmed", "cancelled"],
-            confirmed: ["cancelled"],
-          }[currentStatus] || [])
-        : user?.role === "worker" && isAssignedToCurrentWorker
-          ? ({
-              confirmed: ["on_the_way", "cancelled"],
-              on_the_way: ["arrived", "cancelled"],
-              arrived: ["in_progress", "cancelled"],
-              in_progress: ["completed", "cancelled"],
-            }[currentStatus] || [])
-          : [];
+          user?.role === "customer" ||
+          (user?.role === "worker" && isAssignedToCurrentWorker)
+            ? REQUEST_STATUS_OPTIONS
+            : [];
 
     return (
       <article className="request-card" key={requestId || JSON.stringify(request)}>
@@ -1682,7 +1685,7 @@ function App() {
                 <option value={currentStatus} disabled>
                   Current: {statusLabel(currentStatus)}
                 </option>
-                {availableStatuses.map((status) => (
+                {availableStatuses.filter((status) => status !== currentStatus).map((status) => (
                   <option key={status} value={status}>
                     {statusLabel(status)}
                   </option>
@@ -1720,7 +1723,7 @@ function App() {
                 {requestContacts[requestId].phone ? (
                   <a
                     className="btn btn-primary"
-                    href={`tel:${String(requestContacts[requestId].phone).replace(/[^+\\d]/g, "")}`}
+                    href={`tel:${String(requestContacts[requestId].phone).replace(/[^+\d]/g, "")}`}
                   >
                     Call {requestContacts[requestId].name}
                   </a>

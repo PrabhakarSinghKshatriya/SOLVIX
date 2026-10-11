@@ -348,13 +348,40 @@ class ServiceRequestService:
                 raise ValueError("This role cannot update booking status")
 
             current_status = request.get("status", "requested")
+            valid_statuses = {
+                "requested",
+                "accepted",
+                "confirmed",
+                "on_the_way",
+                "arrived",
+                "in_progress",
+                "completed",
+                "cancelled",
+                "rejected",
+            }
+
+            if new_status not in valid_statuses:
+                raise ValueError("Invalid request status")
+
+            # Preserve role permissions even for same-status selections.
+            # Re-selecting the existing status is a successful no-op.
+            if new_status == current_status:
+                return request
+
+            # Completed and rejected requests are terminal.
+            if current_status in ("completed", "rejected"):
+                raise ValueError(
+                    f"Cannot change status from {current_status} to {new_status}"
+                )
 
             allowed_transitions = {
-                "accepted": ["confirmed", "cancelled"],
+                "requested": ["accepted", "cancelled", "rejected"],
+                "accepted": ["confirmed", "cancelled", "rejected"],
                 "confirmed": ["on_the_way", "cancelled"],
                 "on_the_way": ["arrived", "cancelled"],
                 "arrived": ["in_progress", "cancelled"],
                 "in_progress": ["completed", "cancelled"],
+                "cancelled": [],
             }
 
             if new_status not in allowed_transitions.get(current_status, []):
@@ -362,22 +389,21 @@ class ServiceRequestService:
                     f"Cannot change status from {current_status} to {new_status}"
                 )
 
-            if new_status == "completed" and user_role != "worker":
-                raise ValueError(
-                    "Only the assigned worker can complete the service"
-                )
-
-            if new_status in ("on_the_way", "arrived", "in_progress"):
-                if user_role != "worker":
-                    messages = {
-                        "on_the_way": "Only the assigned worker can go on the way",
-                        "arrived": "Only the assigned worker can mark arrival",
-                        "in_progress": "Only the assigned worker can start the service",
-                    }
-                    raise ValueError(messages[new_status])
-
             if new_status == "confirmed" and user_role != "customer":
-                raise ValueError("Only the customer can confirm the request")
+                raise ValueError("Only the customer can confirm a request")
+
+            if new_status == "accepted" and user_role != "worker":
+                raise ValueError("Only a worker can accept a request")
+
+            if new_status in ("on_the_way", "arrived", "in_progress", "completed") and user_role != "worker":
+                raise ValueError("Only the assigned worker can update this status")
+
+            update_fields = {
+                "status": new_status,
+                "updated_at": now,
+            }
+            if new_status == "completed":
+                update_fields["completed_counted"] = True
 
             result = self.requests.find_one_and_update(
                 {
@@ -386,10 +412,7 @@ class ServiceRequestService:
                     **ownership_filter,
                 },
                 {
-                    "$set": {
-                        "status": new_status,
-                        "updated_at": now,
-                    }
+                    "$set": update_fields,
                 },
                 return_document=ReturnDocument.AFTER,
                 session=session,
@@ -401,7 +424,11 @@ class ServiceRequestService:
                 )
 
             if assigned_worker_id and new_status in ("completed", "cancelled"):
-                if new_status == "completed":
+                # Never count the same booking as completed more than once.
+                if (
+                    new_status == "completed"
+                    and not request.get("completed_counted", False)
+                ):
                     self.db["workers"].update_one(
                         {"user_id": assigned_worker_id},
                         {

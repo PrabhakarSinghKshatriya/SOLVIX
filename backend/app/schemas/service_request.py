@@ -77,10 +77,13 @@ class WorkerRequestAction(BaseModel):
 
 class StatusTransitionRequest(BaseModel):
     status: Literal[
+        "requested",
+        "accepted",
         "confirmed",
         "on_the_way",
         "arrived",
         "in_progress",
         "completed",
         "cancelled",
+        "rejected",
     ]
