@@ -826,9 +826,26 @@ function App() {
   useEffect(() => {
     if (user?.role === "worker") {
       loadSubscription();
+
+      // Automatically detect an existing worker profile after login.
+      api.get("/api/workers/profile")
+        .then((response) => {
+          const profile =
+            response.data?.profile ||
+            response.data?.worker ||
+            response.data;
+
+          setProfileExists(Boolean(profile?.profession));
+        })
+        .catch((err) => {
+          if (err?.response?.status === 404) {
+            setProfileExists(false);
+          }
+        });
     } else {
       setSubscriptionData(null);
       setSubscriptionPlans([]);
+      setProfileExists(false);
     }
   }, [user]);
 
