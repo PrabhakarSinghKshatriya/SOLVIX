@@ -466,8 +466,8 @@ function App() {
 
     const phone = phoneInput.trim();
 
-    if (!/^[0-9]{10,15}$/.test(phone)) {
-      flashError("Enter a valid phone number containing 10–15 digits.");
+    if (!/^[0-9]{10}$/.test(phone)) {
+      flashError("Enter a valid 10-digit mobile number.");
       return;
     }
 
@@ -1679,8 +1679,13 @@ function App() {
                   setStatusDrafts((old) => ({ ...old, [requestId]: e.target.value }))
                 }
               >
+                <option value={currentStatus} disabled>
+                  Current: {statusLabel(currentStatus)}
+                </option>
                 {availableStatuses.map((status) => (
-                  <option key={status} value={status}>{statusLabel(status)}</option>
+                  <option key={status} value={status}>
+                    {statusLabel(status)}
+                  </option>
                 ))}
               </select>
               <button className="btn btn-primary" onClick={() => updateRequestStatus(request)} disabled={loading || availableStatuses.length === 0}>
@@ -2081,11 +2086,11 @@ function App() {
             inputMode="numeric"
             autoComplete="tel"
             minLength={10}
-            maxLength={15}
-            pattern="[0-9]{10,15}"
+            maxLength={10}
+            pattern="[0-9]{10}"
             value={phoneInput}
             onChange={(event) => setPhoneInput(event.target.value)}
-            placeholder="Enter 10–15 digits"
+            placeholder="Enter 10-digit mobile number"
             required
           />
           <button className="btn btn-primary" type="submit" disabled={phoneSaving}>
@@ -2394,7 +2399,7 @@ function App() {
           </label>
 
           {authStep === "credentials" && authMode === "register" && (
-            <label>Phone number<input type="tel" name="phone" required minLength={10} maxLength={15} pattern="[0-9]{10,15}" autoComplete="tel" value={authForm.phone} onChange={updateAuthField} placeholder="Enter 10–15 digits" /></label>
+            <label>Phone number<input type="tel" name="phone" required minLength={10} maxLength={10} pattern="[0-9]{10}" inputMode="numeric" autoComplete="tel" value={authForm.phone} onChange={updateAuthField} placeholder="Enter 10-digit mobile number" /></label>
           )}
 
           {authStep === "credentials" && authMode !== "register" && (

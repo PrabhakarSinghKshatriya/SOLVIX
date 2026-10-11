@@ -503,12 +503,12 @@ async def update_account_phone(
     data: UpdatePhoneRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    # Accept digits only after removing common phone-number separators.
-    phone = re.sub(r"\\D", "", data.phone or "")
-    if not re.fullmatch(r"\\d{10,15}", phone):
+    # Normalize common separators and require a 10-digit mobile number.
+    phone = re.sub(r"\D", "", data.phone or "")
+    if not re.fullmatch(r"\d{10}", phone):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Enter a valid phone number containing 10 to 15 digits.",
+            detail="Enter a valid 10-digit mobile number.",
         )
 
     user_id = str(current_user.get("user_id", ""))
