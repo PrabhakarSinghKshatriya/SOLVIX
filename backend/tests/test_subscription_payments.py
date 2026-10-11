@@ -34,16 +34,28 @@ def payment_setup(monkeypatch):
     fake_payments = MagicMock()
     fake_payments.find_one.return_value = payment
 
+    fake_events = MagicMock()
+    fake_events.update_one.return_value.matched_count = 1
+
     fake_collections = {
         "payments": fake_payments,
         "subscriptions": MagicMock(),
-        "payment_webhook_events": MagicMock(),
+        "payment_webhook_events": fake_events,
     }
 
     fake_db = MagicMock()
     fake_db.__getitem__.side_effect = lambda name: fake_collections.setdefault(
         name, MagicMock()
     )
+
+    # Mock MongoDB sessions and execute the transaction callback.
+    fake_session = MagicMock()
+
+    def run_transaction(callback, *args, **kwargs):
+        return callback(fake_session, *args, **kwargs)
+
+    fake_session.with_transaction.side_effect = run_transaction
+    fake_db.client.start_session.return_value.__enter__.return_value = fake_session
 
     monkeypatch.setattr(routes, "db", fake_db)
 
@@ -376,3 +388,89 @@ def test_already_verified_payment_does_not_create_duplicate_subscription(
 
     # A verified payment must not be updated again.
     payment_setup["payments"].update_one.assert_not_called()
+
+
+def test_webhook_recovers_expired_processing_event(payment_setup):
+    events = payment_setup["db"]["payment_webhook_events"]
+    events.insert_one.side_effect = DuplicateKeyError("duplicate event")
+    events.find_one.return_value = {
+        "event_id": "evt_test_123",
+        "status": "processing",
+    }
+    events.find_one_and_update.return_value = {
+        "event_id": "evt_test_123",
+        "status": "processing",
+    }
+
+    request = signed_webhook_request(make_captured_event())
+
+    with patch.object(
+        routes,
+        "_activate_verified_payment",
+        return_value={"success": True},
+    ) as activate:
+        result = asyncio.run(routes.razorpay_webhook(request))
+
+    assert result == {"success": True}
+    events.find_one_and_update.assert_called_once()
+    claim_filter = events.find_one_and_update.call_args.args[0]
+    assert claim_filter["event_id"] == "evt_test_123"
+    assert claim_filter["status"] == "processing"
+    assert "$or" in claim_filter
+    activate.assert_called_once_with("order_test_123", "pay_test_123")
+
+
+def test_webhook_rejects_event_with_active_lease(payment_setup):
+    events = payment_setup["db"]["payment_webhook_events"]
+    events.insert_one.side_effect = DuplicateKeyError("duplicate event")
+    events.find_one.return_value = {
+        "event_id": "evt_test_123",
+        "status": "processing",
+    }
+    events.find_one_and_update.return_value = None
+
+    request = signed_webhook_request(make_captured_event())
+
+    with patch.object(routes, "_activate_verified_payment") as activate:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(routes.razorpay_webhook(request))
+
+    assert exc.value.status_code == 503
+    activate.assert_not_called()
+
+
+def test_webhook_rejects_lost_ownership_at_completion(payment_setup):
+    events = payment_setup["db"]["payment_webhook_events"]
+    events.update_one.return_value.matched_count = 0
+
+    request = signed_webhook_request(make_captured_event())
+
+    with patch.object(
+        routes,
+        "_activate_verified_payment",
+        return_value={"success": True},
+    ) as activate:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(routes.razorpay_webhook(request))
+
+    assert exc.value.status_code == 503
+    assert "ownership changed" in exc.value.detail.lower()
+    activate.assert_called_once_with("order_test_123", "pay_test_123")
+
+    # Cleanup must only target this request's event ownership token.
+    delete_filter = events.delete_one.call_args.args[0]
+    assert delete_filter["event_id"] == "evt_test_123"
+    assert delete_filter["status"] == "processing"
+    assert delete_filter["owner_token"]
+
+def test_webhook_rejects_missing_event_id(payment_setup):
+    request = signed_webhook_request(
+        make_captured_event(),
+        event_id="",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(routes.razorpay_webhook(request))
+
+    assert exc.value.status_code == 400
+    assert "event id" in exc.value.detail.lower()

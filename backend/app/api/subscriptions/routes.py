@@ -206,81 +206,125 @@ def create_order(
 
 
 def _activate_verified_payment(order_id: str, payment_id: str):
-    payment = db["payments"].find_one({"razorpay_order_id": order_id})
+    """
+    Atomically verify a payment and activate its subscription.
 
-    if not payment:
-        raise HTTPException(status_code=404, detail="Payment order not found")
+    MongoDB transaction support is required. The payment and subscription
+    changes either commit together or roll back together.
+    """
 
-    if payment.get("razorpay_payment_id") not in (None, payment_id):
-        raise HTTPException(status_code=409, detail="Payment order already has another payment")
-
-    if payment.get("status") == "verified":
-        subscription = db["subscriptions"].find_one(
-            {"payment_id": payment_id}
+    def activate_in_transaction(session):
+        payment = db["payments"].find_one(
+            {"razorpay_order_id": order_id},
+            session=session,
         )
-        return {
-            "success": True,
-            "message": "Payment already verified",
-            "subscription": _safe_subscription(subscription),
+
+        if not payment:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment order not found",
+            )
+
+        existing_payment_id = payment.get("razorpay_payment_id")
+        if existing_payment_id not in (None, payment_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Payment order already has another payment",
+            )
+
+        if payment.get("status") == "verified":
+            subscription = db["subscriptions"].find_one(
+                {"payment_id": payment_id},
+                session=session,
+            )
+            if not subscription:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Verified payment has no subscription; reconciliation required",
+                )
+
+            return {
+                "success": True,
+                "message": "Payment already verified",
+                "subscription": _safe_subscription(subscription),
+            }
+
+        now = _now()
+        plan = _plan_details(payment["plan"])
+        worker_id = payment["worker_id"]
+
+        active = db["subscriptions"].find_one(
+            {
+                "worker_id": worker_id,
+                "status": "active",
+                "expires_at": {"$gt": now},
+            },
+            sort=[("expires_at", -1)],
+            session=session,
+        )
+
+        starts_at = active["expires_at"] if active else now
+        expires_at = starts_at + timedelta(days=plan["duration_days"])
+
+        subscription_doc = {
+            "worker_id": worker_id,
+            "plan": payment["plan"],
+            "status": "active",
+            "payment_id": payment_id,
+            "razorpay_order_id": order_id,
+            "starts_at": starts_at,
+            "expires_at": expires_at,
+            "created_at": now,
+            "updated_at": now,
         }
 
-    now = _now()
-    plan = _plan_details(payment["plan"])
-    worker_id = payment["worker_id"]
+        # Claim this order only if it has not already been verified.
+        updated = db["payments"].update_one(
+            {
+                "razorpay_order_id": order_id,
+                "status": {"$ne": "verified"},
+                "$or": [
+                    {"razorpay_payment_id": None},
+                    {"razorpay_payment_id": {"$exists": False}},
+                    {"razorpay_payment_id": payment_id},
+                ],
+            },
+            {
+                "$set": {
+                    "razorpay_payment_id": payment_id,
+                    "status": "verified",
+                    "verified_at": now,
+                    "updated_at": now,
+                }
+            },
+            session=session,
+        )
 
-    active = db["subscriptions"].find_one(
-        {
-            "worker_id": worker_id,
-            "status": "active",
-            "expires_at": {"$gt": now},
-        },
-        sort=[("expires_at", -1)],
-    )
+        if updated.matched_count != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Payment state changed; retry verification",
+            )
 
-    starts_at = active["expires_at"] if active else now
-    expires_at = starts_at + timedelta(days=plan["duration_days"])
+        # The unique payment_id index protects against duplicate subscriptions.
+        db["subscriptions"].insert_one(
+            subscription_doc,
+            session=session,
+        )
 
-    subscription_doc = {
-        "worker_id": worker_id,
-        "plan": payment["plan"],
-        "status": "active",
-        "payment_id": payment_id,
-        "razorpay_order_id": order_id,
-        "starts_at": starts_at,
-        "expires_at": expires_at,
-        "created_at": now,
-        "updated_at": now,
-    }
+        saved = db["subscriptions"].find_one(
+            {"payment_id": payment_id},
+            session=session,
+        )
 
-    # Prevent duplicate activation if verification/webhook is retried.
-    db["subscriptions"].update_one(
-        {"payment_id": payment_id},
-        {"$setOnInsert": subscription_doc},
-        upsert=True,
-    )
+        return {
+            "success": True,
+            "message": "Payment verified and subscription activated",
+            "subscription": _safe_subscription(saved),
+        }
 
-    db["payments"].update_one(
-        {
-            "razorpay_order_id": order_id,
-            "status": {"$ne": "verified"},
-        },
-        {
-            "$set": {
-                "razorpay_payment_id": payment_id,
-                "status": "verified",
-                "verified_at": now,
-                "updated_at": now,
-            }
-        },
-    )
-
-    saved = db["subscriptions"].find_one({"payment_id": payment_id})
-
-    return {
-        "success": True,
-        "message": "Payment verified and subscription activated",
-        "subscription": _safe_subscription(saved),
-    }
+    with db.client.start_session() as session:
+        return session.with_transaction(activate_in_transaction)
 
 
 @router.post("/verify-payment")
@@ -394,19 +438,30 @@ async def razorpay_webhook(request: Request):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
-    event_id = request.headers.get("X-Razorpay-Event-Id")
+    event_id = request.headers.get("X-Razorpay-Event-Id", "").strip()
+
+    if not event_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing Razorpay event ID",
+        )
+
     events = db["payment_webhook_events"]
 
-    # A unique index prevents concurrent deliveries from inserting
-    # the same Razorpay event more than once.
-    if event_id:
-        events.create_index("event_id", unique=True)
+    # Claim the event with an owner token and an expiring lease.
+    event_owner = str(uuid4())
+    event_now = _now()
+    lease_until = event_now + timedelta(minutes=5)
 
+    if event_id:
         try:
             events.insert_one({
                 "event_id": event_id,
                 "status": "processing",
-                "received_at": _now(),
+                "owner_token": event_owner,
+                "lease_until": lease_until,
+                "received_at": event_now,
+                "updated_at": event_now,
             })
         except DuplicateKeyError:
             existing = events.find_one({"event_id": event_id})
@@ -417,10 +472,31 @@ async def razorpay_webhook(request: Request):
                     "message": "Duplicate event ignored",
                 }
 
-            return {
-                "success": True,
-                "message": "Event is already being processed",
-            }
+            reclaimed = events.find_one_and_update(
+                {
+                    "event_id": event_id,
+                    "status": "processing",
+                    "$or": [
+                        {"lease_until": {"$lte": event_now}},
+                        {"lease_until": {"$exists": False}},
+                    ],
+                },
+                {
+                    "$set": {
+                        "owner_token": event_owner,
+                        "lease_until": lease_until,
+                        "updated_at": event_now,
+                    },
+                    "$inc": {"recovery_attempts": 1},
+                },
+                return_document=ReturnDocument.AFTER,
+            )
+
+            if reclaimed is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Webhook event is already being processed; retry later",
+                )
 
     try:
         if event.get("event") == "payment.captured":
@@ -465,27 +541,39 @@ async def razorpay_webhook(request: Request):
                 elif payment.get("status") != "verified":
                     _activate_verified_payment(order_id, payment_id)
 
-        # Record completion only after successful event processing.
+        # Only the current owner may mark the event as processed.
         if event_id:
-            events.update_one(
+            completion = events.update_one(
                 {
                     "event_id": event_id,
                     "status": "processing",
+                    "owner_token": event_owner,
                 },
                 {
                     "$set": {
                         "status": "processed",
                         "processed_at": _now(),
-                    }
+                    },
+                    "$unset": {
+                        "owner_token": "",
+                        "lease_until": "",
+                    },
                 },
             )
 
+            if completion.matched_count != 1:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Webhook event ownership changed; retry later",
+                )
+
     except Exception:
-        # Permit Razorpay to retry if processing failed.
+        # Never delete a processing claim owned by another request.
         if event_id:
             events.delete_one({
                 "event_id": event_id,
                 "status": "processing",
+                "owner_token": event_owner,
             })
         raise
 

@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     # Support geospatial worker searches.
     db["workers"].create_index(
         [("location", "2dsphere")],
-        name="worker_location_2dsphere",
+        name="workers_location_2dsphere",
     )
 
     logger.info("SOLVIX database indexes initialized successfully")
@@ -48,6 +48,26 @@ async def lifespan(app: FastAPI):
         [("user_id", 1), ("is_read", 1)],
         name="notifications_user_unread"
     )
+
+    # Payment indexes: enforce idempotency at the database level.
+    db["payments"].create_index(
+        [("razorpay_order_id", 1)],
+        unique=True,
+        name="payments_razorpay_order_unique",
+    )
+    db["subscriptions"].create_index(
+        [("payment_id", 1)],
+        unique=True,
+        name="subscriptions_payment_unique",
+    )
+    db["payment_webhook_events"].create_index(
+        [("event_id", 1)],
+        unique=True,
+        name="payment_webhook_event_unique",
+        partialFilterExpression={"event_id": {"$type": "string"}},
+    )
+
+    logger.info("SOLVIX payment indexes initialized successfully")
 
     yield
 
