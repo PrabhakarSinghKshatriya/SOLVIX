@@ -1329,13 +1329,13 @@ function App() {
 
   const Header = () => (
     <header className="topbar">
-      <button className="brand" onClick={() => setPage(user ? "dashboard" : "home")}>
+      <button className="brand" onClick={() => setPage("home")}>
         <span className="brand-mark">S</span>
         <span>SOLVIX<small>LOCAL SERVICES, SIMPLIFIED</small></span>
       </button>
 
       <nav className="nav-links">
-        <button onClick={() => setPage(user ? "dashboard" : "home")}>Home</button>
+        <button onClick={() => setPage("home")}>Home</button>
         {user && (
           <button onClick={goDashboard}>Dashboard</button>
         )}
@@ -1490,7 +1490,10 @@ function App() {
   );
 
   const LocationPanel = () => (
-    <section className="panel location-panel">
+    <section
+      id="service-location-panel"
+      className="panel location-panel"
+    >
       <div className="panel-heading">
         <div>
           <span className="eyebrow">LOCATION SETTINGS</span>
@@ -1552,7 +1555,15 @@ function App() {
             setSelectedService(service.name);
             setBooking((old) => ({ ...old, service: service.name }));
             if (user?.role === "customer") {
-              findWorkers(service.name);
+              setPage("book");
+              window.setTimeout(() => {
+                document
+                  .getElementById("service-location-panel")
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+              }, 150);
             } else {
               openAuth("register", "customer");
             }
