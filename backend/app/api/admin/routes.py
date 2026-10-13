@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+import re
 
 from fastapi import APIRouter, Depends, Query
 
@@ -49,7 +50,10 @@ def overview():
         },
         "subscriptions": {
             "total": subscriptions.count_documents({}),
-            "active": subscriptions.count_documents({"status": "active"}),
+            "active": subscriptions.count_documents({
+                "status": "active",
+                "expires_at": {"$gt": datetime.now(timezone.utc)},
+            }),
         },
         "payments": {
             "total": payments.count_documents({}),
@@ -171,9 +175,11 @@ def list_requests(
     for request in cursor:
         location = request.get("location") or {}
         coordinates = location.get("coordinates") or []
+        people = _admin_request_people(db, request)
 
         items.append({
             "id": str(request["_id"]),
+            **people,
             "customer_id": request.get("customer_id"),
             "service": request.get("service"),
             "description": request.get("description"),
@@ -207,10 +213,16 @@ def list_subscriptions(
         .find(
             query,
             {
-                "secret": 0,
-                "token": 0,
-                "payment_signature": 0,
-                "webhook_secret": 0,
+                "_id": 1,
+                "worker_id": 1,
+                "plan": 1,
+                "status": 1,
+                "payment_id": 1,
+                "razorpay_order_id": 1,
+                "starts_at": 1,
+                "expires_at": 1,
+                "created_at": 1,
+                "updated_at": 1,
             },
         )
         .sort("created_at", -1)
@@ -247,10 +259,17 @@ def list_payments(
         .find(
             query,
             {
-                "secret": 0,
-                "token": 0,
-                "payment_signature": 0,
-                "webhook_secret": 0,
+                "_id": 1,
+                "worker_id": 1,
+                "plan": 1,
+                "amount": 1,
+                "currency": 1,
+                "razorpay_order_id": 1,
+                "razorpay_payment_id": 1,
+                "status": 1,
+                "created_at": 1,
+                "updated_at": 1,
+                "verified_at": 1,
             },
         )
         .sort("created_at", -1)
@@ -271,4 +290,306 @@ def list_payments(
         "limit": limit,
         "total": db["payments"].count_documents(query),
         "items": items,
+    }
+
+# SOLVIX_ADMIN_DETAIL_APIS_V1
+from bson import ObjectId
+from bson.errors import InvalidId
+from fastapi import HTTPException
+
+
+def _admin_id(value):
+    try:
+        return ObjectId(value)
+    except (InvalidId, TypeError):
+        return None
+
+
+def _admin_safe(value):
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        blocked = {
+            "password", "password_hash", "secret", "token",
+            "access_token", "refresh_token", "id_token",
+            "payment_signature", "webhook_secret", "reset_token",
+            "otp", "login_otp", "otp_hash", "verification_token",
+            "email_verification_token", "api_key",
+        }
+        return {
+            str(k): _admin_safe(v)
+            for k, v in value.items()
+            if str(k).lower() not in blocked
+        }
+    if isinstance(value, (list, tuple)):
+        return [_admin_safe(v) for v in value]
+    return value
+
+
+def _admin_get_user(db, user_id):
+    oid = _admin_id(user_id)
+    if oid is None:
+        return None
+    return db["users"].find_one(
+        {"_id": oid},
+        {"password": 0, "password_hash": 0, "reset_token": 0},
+    )
+
+
+def _admin_request_people(db, record):
+    """Attach safe customer and assigned-worker summaries to a request."""
+    customer_id = str(record.get("customer_id") or "")
+    assigned_id = str(record.get("assigned_worker_id") or "")
+
+    customer = _admin_get_user(db, customer_id) if customer_id else None
+
+    worker_profile = (
+        db["workers"].find_one({"user_id": assigned_id})
+        if assigned_id else None
+    )
+    worker_user = (
+        _admin_get_user(db, assigned_id)
+        if assigned_id else None
+    )
+
+    return {
+        "customer": (
+            {
+                "name": customer.get("name"),
+                "email": customer.get("email"),
+                "phone": customer.get("phone"),
+            }
+            if customer else None
+        ),
+        "assigned_worker": (
+            {
+                "name": (worker_user or {}).get("name"),
+                "email": (worker_user or {}).get("email"),
+                "phone": (worker_user or {}).get("phone"),
+                "profession": (worker_profile or {}).get("profession"),
+                "rating": (worker_profile or {}).get("rating"),
+            }
+            if worker_profile or worker_user else None
+        ),
+    }
+
+@router.get("/workers/{worker_id}/details")
+def admin_worker_details(worker_id: str):
+    db = get_database()
+    oid = _admin_id(worker_id)
+
+    worker = db["workers"].find_one({"_id": oid}) if oid else None
+    if worker is None:
+        worker = db["workers"].find_one({"user_id": worker_id})
+
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    user_id = str(worker.get("user_id", ""))
+    profile = _admin_get_user(db, user_id)
+
+    # SOLVIX_ADMIN_PROFILE_ENRICHMENT_V1
+    jobs_query = {"assigned_worker_id": user_id}
+    jobs = list(
+        db["service_requests"]
+        .find(jobs_query)
+        .sort("created_at", -1)
+        .limit(200)
+    )
+
+    # Count every matching record, not only the 200 displayed records.
+    job_counts = {}
+    for item in db["service_requests"].aggregate([
+        {"$match": jobs_query},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+    ]):
+        job_counts[str(item.get("_id") or "unknown")] = item["count"]
+
+    for job in jobs:
+        customer = _admin_get_user(db, str(job.get("customer_id", "")))
+        job["customer"] = (
+            {
+                "name": customer.get("name"),
+                "email": customer.get("email"),
+                "phone": customer.get("phone"),
+            }
+            if customer else None
+        )
+
+    subscriptions = list(
+        db["subscriptions"]
+        .find({"worker_id": user_id})
+        .sort("created_at", -1)
+        .limit(100)
+    )
+
+    try:
+        from app.config import settings
+        free_limit = int(settings.worker_free_opportunities)
+    except (ImportError, AttributeError, TypeError, ValueError):
+        free_limit = 5
+
+    free_used = int(worker.get("free_opportunities_used", 0) or 0)
+
+    return {
+        "success": True,
+        "worker": _admin_safe({
+            **worker,
+            "id": str(worker["_id"]),
+        }),
+        "user": _admin_safe(profile) if profile else None,
+        "jobs": {
+            "total": db["service_requests"].count_documents(
+                {"assigned_worker_id": user_id}
+            ),
+            "by_status": job_counts,
+            "items": [
+                _admin_safe({**job, "id": str(job["_id"])})
+                for job in jobs
+            ],
+        },
+        "opportunities": {
+            "free_limit": free_limit,
+            "free_used": free_used,
+            "free_remaining": max(0, free_limit - free_used),
+        },
+        "subscriptions": [
+            _admin_safe({**item, "id": str(item["_id"])})
+            for item in subscriptions
+        ],
+    }
+
+
+@router.get("/customers/{customer_id}/details")
+def admin_customer_details(customer_id: str):
+    db = get_database()
+    customer = _admin_get_user(db, customer_id)
+
+    if customer is None or customer.get("role") != "customer":
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Count all requests independently of the recent-history limit.
+    customer_query = {"customer_id": customer_id}
+    records = list(
+        db["service_requests"]
+        .find(customer_query)
+        .sort("created_at", -1)
+        .limit(200)
+    )
+
+    counts = {}
+    for item in db["service_requests"].aggregate([
+        {"$match": customer_query},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+    ]):
+        counts[str(item.get("_id") or "unknown")] = item["count"]
+
+    for record in records:
+        assigned_id = str(record.get("assigned_worker_id") or "")
+        worker = db["workers"].find_one({"user_id": assigned_id}) if assigned_id else None
+        worker_user = (
+            _admin_get_user(db, assigned_id)
+            if assigned_id else None
+        )
+        record["assigned_worker"] = (
+            {
+                "name": (worker_user or {}).get("name"),
+                "email": (worker_user or {}).get("email"),
+                "phone": (worker_user or {}).get("phone"),
+                "profession": (worker or {}).get("profession"),
+                "rating": (worker or {}).get("rating"),
+            }
+            if worker or worker_user else None
+        )
+
+    return {
+        "success": True,
+        "customer": _admin_safe(customer),
+        "requests": {
+            "total": db["service_requests"].count_documents(
+                {"customer_id": customer_id}
+            ),
+            "by_status": counts,
+            "items": [
+                _admin_safe({**record, "id": str(record["_id"])})
+                for record in records
+            ],
+        },
+    }
+
+
+@router.get("/requests/filter")
+def admin_filter_requests(
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
+    status: str | None = Query(None),
+    customer_id: str | None = Query(None),
+    worker_id: str | None = Query(None),
+    profession: str | None = Query(None, min_length=1, max_length=100),
+    start_date: datetime | None = Query(None),
+    end_date: datetime | None = Query(None),
+):
+    db = get_database()
+    conditions = []
+
+    if status:
+        conditions.append({"status": status})
+    if customer_id:
+        conditions.append({"customer_id": customer_id})
+    if worker_id:
+        conditions.append({"assigned_worker_id": worker_id})
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="start_date must not be later than end_date",
+        )
+
+    dates = {}
+    if start_date:
+        dates["$gte"] = start_date
+    if end_date:
+        dates["$lte"] = end_date
+    if dates:
+        conditions.append({"created_at": dates})
+
+    if profession:
+        matching_workers = db["workers"].find(
+            {"profession": {"$regex": re.escape(profession), "$options": "i"}},
+            {"user_id": 1},
+        )
+        worker_ids = [
+            item["user_id"]
+            for item in matching_workers
+            if item.get("user_id")
+        ]
+        conditions.append({
+            "assigned_worker_id": {"$in": worker_ids}
+        })
+
+    query = {"$and": conditions} if conditions else {}
+    collection = db["service_requests"]
+
+    records = list(
+        collection.find(query)
+        .sort("created_at", -1)
+        .skip((page - 1) * limit)
+        .limit(limit)
+    )
+
+    return {
+        "success": True,
+        "page": page,
+        "limit": limit,
+        "total": collection.count_documents(query),
+        "items": [
+            _admin_safe({
+                **record,
+                "id": str(record["_id"]),
+                **_admin_request_people(db, record),
+            })
+            for record in records
+        ],
     }

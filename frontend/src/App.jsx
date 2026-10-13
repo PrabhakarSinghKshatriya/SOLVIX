@@ -184,10 +184,23 @@ function App() {
   const [publicStats, setPublicStats] = useState(null);
   const [requestContacts, setRequestContacts] = useState({});
   const [contactLoading, setContactLoading] = useState({});
+  // SOLVIX_ADMIN_DASHBOARD_V2
   const [adminOverview, setAdminOverview] = useState(null);
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminWorkers, setAdminWorkers] = useState([]);
   const [adminRequests, setAdminRequests] = useState([]);
+  const [adminSubscriptions, setAdminSubscriptions] = useState([]);
+  const [adminPayments, setAdminPayments] = useState([]);
+  const [adminProfile, setAdminProfile] = useState(null);
+  const [adminProfileLoading, setAdminProfileLoading] = useState(false);
+  const [adminRequestFilters, setAdminRequestFilters] = useState({
+    status: "",
+    customer_id: "",
+    worker_id: "",
+    profession: "",
+    start_date: "",
+    end_date: "",
+  });
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState("");
 
@@ -1692,17 +1705,22 @@ function App() {
     setAdminLoading(true);
     setAdminError("");
     try {
-      const [overview, users, workers, requests] = await Promise.all([
-        api.get("/api/admin/overview"),
-        api.get("/api/admin/users?limit=10&page=1"),
-        api.get("/api/admin/workers?limit=10&page=1"),
-        api.get("/api/admin/requests?limit=10&page=1"),
-      ]);
+      const [overview, users, workers, requests, subscriptions, payments] =
+        await Promise.all([
+          api.get("/api/admin/overview"),
+          api.get("/api/admin/users?limit=100&page=1"),
+          api.get("/api/admin/workers?limit=100&page=1"),
+          api.get("/api/admin/requests?limit=100&page=1"),
+          api.get("/api/admin/subscriptions?limit=100&page=1"),
+          api.get("/api/admin/payments?limit=100&page=1"),
+        ]);
 
       setAdminOverview(overview.data);
       setAdminUsers(users.data?.items || []);
       setAdminWorkers(workers.data?.items || []);
       setAdminRequests(requests.data?.items || []);
+      setAdminSubscriptions(subscriptions.data?.items || []);
+      setAdminPayments(payments.data?.items || []);
     } catch (err) {
       const detail = err.response?.data?.detail;
       setAdminError(
@@ -1712,6 +1730,34 @@ function App() {
       );
     } finally {
       setAdminLoading(false);
+    }
+  };
+
+  const loadAdminProfile = async (kind, id) => {
+    if (user?.role !== "admin" || !id) {
+      flashError("Admin access is required.");
+      return;
+    }
+
+    setAdminProfileLoading(true);
+    setAdminProfile(null);
+    setAdminError("");
+
+    try {
+      const endpoint =
+        kind === "worker"
+          ? `/api/admin/workers/${encodeURIComponent(id)}/details`
+          : `/api/admin/customers/${encodeURIComponent(id)}/details`;
+
+      const response = await api.get(endpoint);
+      setAdminProfile({ kind, data: response.data });
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      setAdminError(
+        typeof detail === "string" ? detail : getError(err)
+      );
+    } finally {
+      setAdminProfileLoading(false);
     }
   };
 
@@ -1949,9 +1995,11 @@ function App() {
 
   const AdminPage = () => {
     const overview = adminOverview || {};
-    const users = overview.users || {};
-    const workers = overview.workers || {};
-    const requests = overview.requests || {};
+    const userCounts = overview.users || {};
+    const workerCounts = overview.workers || {};
+    const requestCounts = overview.requests || {};
+    const subscriptionCounts = overview.subscriptions || {};
+    const paymentCounts = overview.payments || {};
 
     if (user?.role !== "admin") {
       return (
@@ -1972,13 +2020,108 @@ function App() {
       </article>
     );
 
+    const displayDate = (value) =>
+      value ? formatIST(value) : "—";
+
+    const displayAmount = (value) => {
+      if (value === null || value === undefined || value === "") {
+        return "—";
+      }
+      return `₹${(Number(value) / 100).toLocaleString("en-IN", {
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      })}`;
+    };
+
+    const applyFilters = async () => {
+      setAdminLoading(true);
+      setAdminError("");
+
+      try {
+        const params = {
+          page: 1,
+          limit: 100,
+        };
+
+        Object.entries(adminRequestFilters).forEach(([key, value]) => {
+          if (value) {
+            params[key] = value;
+          }
+        });
+
+        if (
+          adminRequestFilters.start_date &&
+          adminRequestFilters.end_date &&
+          adminRequestFilters.start_date > adminRequestFilters.end_date
+        ) {
+          setAdminError("Start date must not be later than end date.");
+          return;
+        }
+
+        if (params.start_date) {
+          params.start_date = `${params.start_date}T00:00:00`;
+        }
+        if (params.end_date) {
+          params.end_date = `${params.end_date}T23:59:59`;
+        }
+
+        const response = await api.get("/api/admin/requests/filter", {
+          params,
+        });
+
+        setAdminRequests(response.data?.items || []);
+      } catch (err) {
+        const detail = err.response?.data?.detail;
+        setAdminError(
+          typeof detail === "string" ? detail : getError(err)
+        );
+      } finally {
+        setAdminLoading(false);
+      }
+    };
+
+    const clearFilters = async () => {
+      setAdminRequestFilters({
+        status: "",
+        customer_id: "",
+        worker_id: "",
+        profession: "",
+        start_date: "",
+        end_date: "",
+      });
+      setAdminLoading(true);
+      setAdminError("");
+
+      try {
+        const response = await api.get("/api/admin/requests", {
+          params: { page: 1, limit: 100 },
+        });
+        setAdminRequests(response.data?.items || []);
+      } catch (err) {
+        setAdminError(getError(err));
+      } finally {
+        setAdminLoading(false);
+      }
+    };
+
+    const profileData = adminProfile?.data;
+    const profilePerson =
+      adminProfile?.kind === "worker"
+        ? profileData?.user
+        : profileData?.customer;
+
+    const profileJobs =
+      adminProfile?.kind === "worker"
+        ? profileData?.jobs
+        : profileData?.requests;
+
     return (
       <section className="section-block admin-dashboard">
         <div className="section-heading">
           <div>
             <span className="eyebrow">SOLVIX CONTROL CENTRE</span>
             <h1>Admin dashboard</h1>
-            <p>Marketplace overview from the protected admin API.</p>
+            <p>Protected marketplace management and operational records.</p>
           </div>
           <button
             className="btn btn-outline"
@@ -1999,91 +2142,449 @@ function App() {
 
         {adminOverview && (
           <>
-            <h2>Users</h2>
+            <h2>Marketplace overview</h2>
             <div className="admin-metrics">
-              <Metric label="All users" value={users.total} />
-              <Metric label="Customers" value={users.customers} />
-              <Metric label="Workers" value={users.workers} />
-              <Metric label="Active accounts" value={users.active} />
+              <Metric label="All users" value={userCounts.total} />
+              <Metric label="Customers" value={userCounts.customers} />
+              <Metric label="Workers" value={userCounts.workers} />
+              <Metric label="Active accounts" value={userCounts.active} />
+              <Metric label="All requests" value={requestCounts.total} />
+              <Metric label="Completed jobs" value={requestCounts.completed} />
+              <Metric label="Active subscriptions" value={subscriptionCounts.active} />
+              <Metric label="Verified payments" value={paymentCounts.verified} />
             </div>
 
-            <h2>Workers</h2>
+            <h2>Worker availability</h2>
             <div className="admin-metrics">
-              <Metric label="Registered workers" value={workers.total} />
-              <Metric label="Available" value={workers.available} />
-              <Metric label="Busy" value={workers.busy} />
+              <Metric label="Registered workers" value={workerCounts.total} />
+              <Metric label="Available" value={workerCounts.available} />
+              <Metric label="Busy" value={workerCounts.busy} />
             </div>
 
-            <h2>Service requests</h2>
+            <h2>Request status summary</h2>
             <div className="admin-metrics">
-              <Metric label="All requests" value={requests.total} />
-              <Metric label="Requested" value={requests.requested} />
-              <Metric label="Accepted" value={requests.accepted} />
-              <Metric label="In progress" value={requests.in_progress} />
-              <Metric label="Completed" value={requests.completed} />
-              <Metric label="Cancelled" value={requests.cancelled} />
+              <Metric label="Requested" value={requestCounts.requested} />
+              <Metric label="Accepted" value={requestCounts.accepted} />
+              <Metric label="In progress" value={requestCounts.in_progress} />
+              <Metric label="Completed" value={requestCounts.completed} />
+              <Metric label="Cancelled" value={requestCounts.cancelled} />
             </div>
 
-            <h2>Recent users</h2>
+            <h2>Customer and worker directory</h2>
+            <p>Select a customer or worker to inspect their available records.</p>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
-                  <tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th></tr>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Role</th>
+                    <th>Active</th>
+                    <th>Details</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {adminUsers.map((item) => (
                     <tr key={item.id}>
                       <td>{item.name || "—"}</td>
                       <td>{item.email || "—"}</td>
+                      <td>{item.phone || "—"}</td>
                       <td>{item.role || "—"}</td>
                       <td>{item.is_active ? "Yes" : "No"}</td>
+                      <td>
+                        {item.role === "customer" ? (
+                          <button
+                            className="btn btn-outline admin-small-button"
+                            onClick={() => loadAdminProfile("customer", item.id)}
+                          >
+                            View customer
+                          </button>
+                        ) : item.role === "worker" ? (
+                          <button
+                            className="btn btn-outline admin-small-button"
+                            onClick={() => {
+                              const worker = adminWorkers.find(
+                                (entry) => String(entry.user_id) === String(item.id)
+                              );
+                              loadAdminProfile("worker", worker?.id || item.id);
+                            }}
+                          >
+                            View worker
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {!adminUsers.length && (
-                    <tr><td colSpan="4">No users returned.</td></tr>
+                    <tr><td colSpan="6">No users returned.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
 
-            <h2>Recent workers</h2>
+            {adminProfileLoading && <p>Loading profile details...</p>}
+
+            {profileData && (
+              <section className="admin-profile-panel">
+                <div className="admin-profile-heading">
+                  <div>
+                    <span className="eyebrow">PROFILE DETAILS</span>
+                    <h2>
+                      {adminProfile.kind === "worker" ? "Worker profile" : "Customer profile"}
+                    </h2>
+                  </div>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setAdminProfile(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="admin-profile-grid">
+                  <div><span>Name</span><strong>{profilePerson?.name || "—"}</strong></div>
+                  <div><span>Email</span><strong>{profilePerson?.email || "—"}</strong></div>
+                  <div><span>Phone</span><strong>{profilePerson?.phone || "—"}</strong></div>
+                  {adminProfile.kind === "worker" && (
+                    <>
+                      <div><span>Profession</span><strong>{profileData.worker?.profession || "—"}</strong></div>
+                      <div><span>Skills</span><strong>{Array.isArray(profileData.worker?.skills) ? profileData.worker.skills.join(", ") : profileData.worker?.skills || "—"}</strong></div>
+                      <div><span>Experience</span><strong>{profileData.worker?.experience_years ?? "—"} years</strong></div>
+                      <div><span>Availability</span><strong>{statusLabel(profileData.worker?.availability)}</strong></div>
+                      <div><span>Rating</span><strong>{Number(profileData.worker?.rating || 0).toFixed(1)} ({profileData.worker?.total_reviews || 0} reviews)</strong></div>
+                      <div>
+                        <span>Location coordinates</span>
+                        <strong>
+                          {Array.isArray(profileData.worker?.location?.coordinates)
+                            ? `${profileData.worker.location.coordinates[1]}, ${profileData.worker.location.coordinates[0]}`
+                            : "Not available"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Service radius</span>
+                        <strong>
+                          {profileData.worker?.service_radius_km != null
+                            ? `${profileData.worker.service_radius_km} km`
+                            : "Not specified"}
+                        </strong>
+                      </div>
+                      <div><span>Completed services</span><strong>{profileData.worker?.completed_services ?? 0}</strong></div>
+                      <div><span>Free opportunities used</span><strong>{profileData.opportunities?.free_used ?? 0}</strong></div>
+                      <div><span>Free opportunities remaining</span><strong>{profileData.opportunities?.free_remaining ?? 0}</strong></div>
+                    </>
+                  )}
+                </div>
+
+                <h3>Service history ({profileJobs?.total ?? 0})</h3>
+                {profileJobs?.by_status && (
+                  <div className="admin-status-summary">
+                    {Object.entries(profileJobs.by_status).map(([status, count]) => (
+                      <span key={status}>{statusLabel(status)}: {count}</span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>{adminProfile.kind === "worker" ? "Customer" : "Assigned worker"}</th>
+                        <th>Cost</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(profileJobs?.items || []).map((job) => {
+                        const cost = job.total_cost ?? job.service_cost ?? job.cost ?? job.price;
+                        return (
+                          <tr key={job.id}>
+                            <td>{job.service || job.profession || "—"}</td>
+                            <td>{statusLabel(job.status)}</td>
+                            <td>
+                              {(() => {
+                                const person =
+                                  adminProfile.kind === "worker"
+                                    ? job.customer
+                                    : job.assigned_worker;
+
+                                const fallbackId =
+                                  adminProfile.kind === "worker"
+                                    ? job.customer_id
+                                    : job.assigned_worker_id;
+
+                                return (
+                                  <div className="admin-history-person">
+                                    <strong>{person?.name || fallbackId || "Not assigned"}</strong>
+                                    {person?.phone && <span>{person.phone}</span>}
+                                    {person?.email && <span>{person.email}</span>}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td>
+                              {cost === undefined || cost === null || cost === ""
+                                ? "Not recorded"
+                                : `₹${Number(cost).toLocaleString("en-IN")}`}
+                            </td>
+                            <td>{displayDate(job.created_at)}</td>
+                          </tr>
+                        );
+                      })}
+                      {!(profileJobs?.items || []).length && (
+                        <tr><td colSpan="5">No service history found.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {adminProfile.kind === "worker" && (
+                  <>
+                    <h3>Subscription history</h3>
+                    <div className="admin-table-wrap">
+                      <table className="admin-table">
+                        <thead>
+                          <tr><th>Plan</th><th>Status</th><th>Starts</th><th>Expires</th></tr>
+                        </thead>
+                        <tbody>
+                          {(profileData.subscriptions || []).map((item) => (
+                            <tr key={item.id}>
+                              <td>{item.plan || "—"}</td>
+                              <td>{statusLabel(item.status)}</td>
+                              <td>{displayDate(item.starts_at)}</td>
+                              <td>{displayDate(item.expires_at)}</td>
+                            </tr>
+                          ))}
+                          {!(profileData.subscriptions || []).length && (
+                            <tr><td colSpan="4">No subscriptions found.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
+            <h2>Worker directory</h2>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
-                  <tr><th>Profession</th><th>Availability</th><th>Rating</th><th>Verified</th></tr>
+                  <tr>
+                    <th>Profession</th>
+                    <th>Skills</th>
+                    <th>Experience</th>
+                    <th>Availability</th>
+                    <th>Rating</th>
+                    <th>Verified</th>
+                    <th>Details</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {adminWorkers.map((item) => (
                     <tr key={item.id}>
                       <td>{item.profession || "—"}</td>
+                      <td>{Array.isArray(item.skills) ? item.skills.join(", ") : item.skills || "—"}</td>
+                      <td>{item.experience_years ?? "—"}</td>
                       <td>{statusLabel(item.availability)}</td>
                       <td>{Number(item.rating || 0).toFixed(1)}</td>
                       <td>{item.is_verified ? "Yes" : "No"}</td>
+                      <td>
+                        <button
+                          className="btn btn-outline admin-small-button"
+                          onClick={() => loadAdminProfile("worker", item.id)}
+                        >
+                          View details
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {!adminWorkers.length && (
-                    <tr><td colSpan="4">No workers returned.</td></tr>
+                    <tr><td colSpan="7">No workers returned.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
 
-            <h2>Recent requests</h2>
+            <h2>Request filters</h2>
+            <div className="admin-filter-grid">
+              <label>
+                Status
+                <select
+                  value={adminRequestFilters.status}
+                  onChange={(e) => setAdminRequestFilters((old) => ({ ...old, status: e.target.value }))}
+                >
+                  <option value="">All statuses</option>
+                  {["requested", "accepted", "confirmed", "on_the_way", "arrived", "in_progress", "completed", "rejected", "cancelled", "expired"].map((status) => (
+                    <option key={status} value={status}>{statusLabel(status)}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Customer
+                <select
+                  value={adminRequestFilters.customer_id}
+                  onChange={(e) => setAdminRequestFilters((old) => ({ ...old, customer_id: e.target.value }))}
+                >
+                  <option value="">All customers</option>
+                  {adminUsers.filter((item) => item.role === "customer").map((item) => (
+                    <option key={item.id} value={item.id}>{item.name || item.email || item.id}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Worker
+                <select
+                  value={adminRequestFilters.worker_id}
+                  onChange={(e) => setAdminRequestFilters((old) => ({ ...old, worker_id: e.target.value }))}
+                >
+                  <option value="">All workers</option>
+                  {adminWorkers.map((item) => (
+                    <option key={item.id} value={item.user_id}>{item.profession || item.user_id}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Profession
+                <input
+                  value={adminRequestFilters.profession}
+                  onChange={(e) => setAdminRequestFilters((old) => ({ ...old, profession: e.target.value }))}
+                  placeholder="e.g. Plumber"
+                  maxLength={100}
+                />
+              </label>
+              <label>
+                From date
+                <input
+                  type="date"
+                  value={adminRequestFilters.start_date}
+                  onChange={(e) => setAdminRequestFilters((old) => ({ ...old, start_date: e.target.value }))}
+                />
+              </label>
+              <label>
+                To date
+                <input
+                  type="date"
+                  value={adminRequestFilters.end_date}
+                  onChange={(e) => setAdminRequestFilters((old) => ({ ...old, end_date: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="admin-filter-actions">
+              <button className="btn btn-primary" onClick={applyFilters} disabled={adminLoading}>
+                Apply filters
+              </button>
+              <button className="btn btn-outline" onClick={clearFilters} disabled={adminLoading}>
+                Clear filters
+              </button>
+            </div>
+
+            <h2>Service requests ({adminRequests.length})</h2>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
-                  <tr><th>Service</th><th>Status</th><th>Created</th></tr>
+                  <tr>
+                    <th>Service</th>
+                    <th>Customer</th>
+                    <th>Assigned worker</th>
+                    <th>Status</th>
+                    <th>Created (IST)</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {adminRequests.map((item) => (
                     <tr key={item.id}>
                       <td>{item.service || "—"}</td>
+                      <td>
+                        <div className="admin-history-person">
+                          <strong>{item.customer?.name || item.customer_id || "—"}</strong>
+                          {item.customer?.phone && (
+                            <span>
+                              <a href={`tel:${item.customer.phone}`}>{item.customer.phone}</a>
+                            </span>
+                          )}
+                          {item.customer?.email && <span>{item.customer.email}</span>}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="admin-history-person">
+                          <strong>
+                            {item.assigned_worker?.name || item.assigned_worker_id || "Not assigned"}
+                          </strong>
+                          {item.assigned_worker?.profession && (
+                            <span>{item.assigned_worker.profession}</span>
+                          )}
+                          {item.assigned_worker?.phone && (
+                            <span>
+                              <a href={`tel:${item.assigned_worker.phone}`}>
+                                {item.assigned_worker.phone}
+                              </a>
+                            </span>
+                          )}
+                          {item.assigned_worker?.email && (
+                            <span>{item.assigned_worker.email}</span>
+                          )}
+                        </div>
+                      </td>
                       <td>{statusLabel(item.status)}</td>
-                      <td>{item.created_at ? formatIST(item.created_at) : "—"}</td>
+                      <td>{displayDate(item.created_at)}</td>
                     </tr>
                   ))}
                   {!adminRequests.length && (
-                    <tr><td colSpan="3">No requests returned.</td></tr>
+                    <tr><td colSpan="5">No requests match these filters.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h2>Subscriptions</h2>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Worker ID</th><th>Plan</th><th>Status</th><th>Starts</th><th>Expires</th><th>Payment ID</th></tr>
+                </thead>
+                <tbody>
+                  {adminSubscriptions.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.worker_id || "—"}</td>
+                      <td>{item.plan || "—"}</td>
+                      <td>{statusLabel(item.status)}</td>
+                      <td>{displayDate(item.starts_at)}</td>
+                      <td>{displayDate(item.expires_at)}</td>
+                      <td>{item.payment_id || "—"}</td>
+                    </tr>
+                  ))}
+                  {!adminSubscriptions.length && (
+                    <tr><td colSpan="6">No subscriptions returned.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <h2>Payment records</h2>
+            <p>Payment status is displayed from backend records; this dashboard does not manually verify payments.</p>
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Worker ID</th><th>Plan</th><th>Amount</th><th>Currency</th><th>Status</th><th>Razorpay payment ID</th></tr>
+                </thead>
+                <tbody>
+                  {adminPayments.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.worker_id || "—"}</td>
+                      <td>{item.plan || "—"}</td>
+                      <td>{item.currency === "INR" ? displayAmount(item.amount) : `${item.amount ?? "—"} ${item.currency || ""}`}</td>
+                      <td>{item.currency || "—"}</td>
+                      <td>{statusLabel(item.status)}</td>
+                      <td>{item.razorpay_payment_id || "—"}</td>
+                    </tr>
+                  ))}
+                  {!adminPayments.length && (
+                    <tr><td colSpan="6">No payment records returned.</td></tr>
                   )}
                 </tbody>
               </table>

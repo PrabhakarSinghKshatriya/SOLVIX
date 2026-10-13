@@ -3008,3 +3008,121 @@ textarea {
     box-shadow: 0 12px 30px rgba(18, 67, 42, 0.08);
   }
 }
+
+/* SOLVIX_ADMIN_DASHBOARD_V2 */
+.admin-profile-panel {
+  margin: 24px 0;
+  padding: 22px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+}
+
+.admin-profile-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.admin-profile-heading h2 {
+  margin: 6px 0 0;
+}
+
+.admin-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.admin-profile-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+
+.admin-profile-grid span {
+  color: var(--muted, #64748b);
+  font-size: 0.88rem;
+}
+
+.admin-profile-grid strong {
+  font-size: 0.96rem;
+}
+
+.admin-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.admin-filter-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.admin-filter-grid input,
+.admin-filter-grid select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 9px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.admin-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 24px;
+}
+
+.admin-small-button {
+  padding: 7px 10px;
+  font-size: 0.84rem;
+}
+
+.admin-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.admin-status-summary span {
+  padding: 6px 10px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.admin-dashboard .admin-table tbody tr:hover {
+  background: var(--surface, #f8fafc);
+}
+
+@media (max-width: 600px) {
+  .admin-profile-panel {
+    padding: 14px;
+  }
+
+  .admin-profile-heading {
+    align-items: flex-start;
+  }
+
+  .admin-filter-actions .btn {
+    flex: 1 1 auto;
+  }
+}
