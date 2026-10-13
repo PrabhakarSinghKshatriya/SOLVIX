@@ -3199,3 +3199,94 @@ textarea {
     transition: none;
   }
 }
+
+/* SOLVIX_FEEDBACK_RATINGS_V1 */
+.review-form,
+.review-submitted {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--border-color, #dfe4ea);
+  border-radius: 12px;
+}
+
+.review-form h4 {
+  margin: 0 0 6px;
+}
+
+.review-form label {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.review-form textarea {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.review-star-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.review-star {
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  min-width: 40px;
+  min-height: 40px;
+  font-size: 28px;
+  cursor: pointer;
+  color: #9ca3af;
+}
+
+.review-star.is-selected {
+  color: #e9a11b;
+}
+
+.review-submitted strong {
+  display: block;
+}
+
+.review-submitted p {
+  margin-bottom: 0;
+}
+
+.worker-review-list {
+  display: grid;
+  gap: 12px;
+}
+
+.worker-review-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-color, #dfe4ea);
+}
+
+.worker-review-item:last-child {
+  border-bottom: 0;
+}
+
+.worker-review-item p {
+  overflow-wrap: anywhere;
+}
+
+.worker-review-rating {
+  font-weight: 700;
+  color: #b7790a;
+}
+
+@media (max-width: 480px) {
+  .review-form,
+  .review-submitted {
+    padding: 12px;
+  }
+
+  .review-star {
+    min-width: 36px;
+    font-size: 25px;
+  }
+}

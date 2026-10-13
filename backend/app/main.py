@@ -32,6 +32,17 @@ async def lifespan(app: FastAPI):
         name="users_email_unique",
     )
 
+    # Allow only one review per service request.
+    db["reviews"].create_index(
+        [("request_id", 1)],
+        unique=True,
+        name="reviews_request_unique",
+    )
+    db["reviews"].create_index(
+        [("worker_id", 1), ("created_at", -1)],
+        name="reviews_worker_created",
+    )
+
     # Support geospatial worker searches.
     workers_collection = db["workers"]
     has_location_index = any(

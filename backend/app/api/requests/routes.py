@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies import get_current_user, require_role
 from app.database.connection import get_database
 from app.schemas.service_request import CreateServiceRequest, StatusTransitionRequest, WorkerRequestAction
+from app.schemas.review import CreateReviewRequest
 from app.services.worker_service import WorkerService
 from app.services.notification_service import NotificationService
+from app.services.review_service import ReviewService
 from app.services.service_request_service import (
     ServiceRequestService,
 )
@@ -386,6 +388,28 @@ async def get_my_service_requests(
         current_user["user_id"]
     )
 
+    # Persist review-submission state across page refreshes.
+    from bson import ObjectId
+    from app.database.connection import get_database
+
+    reviews_collection = get_database()["reviews"]
+    customer_id = str(current_user["user_id"])
+
+    for request in requests:
+        request_id = request.get("id") or request.get("_id")
+        request["review_submitted"] = False
+
+        if request_id and ObjectId.is_valid(str(request_id)):
+            request["review_submitted"] = bool(
+                reviews_collection.find_one(
+                    {
+                        "request_id": ObjectId(str(request_id)),
+                        "customer_id": customer_id,
+                    },
+                    {"_id": 1},
+                )
+            )
+
     return {
         "success": True,
         "count": len(requests),
@@ -574,3 +598,65 @@ async def handle_worker_request(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
+
+
+# SOLVIX_CUSTOMER_REVIEWS_V1
+@router.post("/{request_id}/review", status_code=status.HTTP_201_CREATED)
+async def submit_service_review(
+    request_id: str,
+    data: CreateReviewRequest,
+    current_user: dict = Depends(require_role("customer")),
+):
+    from pymongo.errors import DuplicateKeyError
+
+    service = ReviewService()
+
+    try:
+        review = service.create_review(
+            request_id=request_id,
+            customer_id=str(current_user["user_id"]),
+            rating=data.rating,
+            feedback=data.feedback,
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+    except DuplicateKeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A review has already been submitted for this booking",
+        ) from exc
+    except ValueError as exc:
+        message = str(exc)
+
+        if message == "Service request not found":
+            code = status.HTTP_404_NOT_FOUND
+        elif "already been submitted" in message:
+            code = status.HTTP_409_CONFLICT
+        else:
+            code = status.HTTP_400_BAD_REQUEST
+
+        raise HTTPException(status_code=code, detail=message) from exc
+
+    return {
+        "success": True,
+        "message": "Your review has been submitted successfully.",
+        "review": review,
+    }
+
+
+@router.get("/worker/my-reviews")
+async def get_my_worker_reviews(
+    current_user: dict = Depends(require_role("worker")),
+):
+    reviews = ReviewService().get_worker_reviews(
+        str(current_user["user_id"])
+    )
+
+    return {
+        "success": True,
+        "count": len(reviews),
+        "reviews": reviews,
+    }

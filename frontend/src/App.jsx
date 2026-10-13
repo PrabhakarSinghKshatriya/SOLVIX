@@ -223,6 +223,12 @@ function App() {
   const [workers, setWorkers] = useState([]);
   const [requests, setRequests] = useState([]);
 
+  // SOLVIX_FEEDBACK_RATINGS_V1
+  const [reviewDrafts, setReviewDrafts] = useState({});
+  const [reviewSubmitting, setReviewSubmitting] = useState({});
+  const [workerReviews, setWorkerReviews] = useState([]);
+  const [workerReviewsLoading, setWorkerReviewsLoading] = useState(false);
+
   // SOLVIX_NOTIFICATION_BELL_V1
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -869,6 +875,83 @@ function App() {
       flashError(getError(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // SOLVIX_FEEDBACK_RATINGS_V1
+  const submitReview = async (request) => {
+    const requestId = getRequestId(request);
+    const draft = reviewDrafts[requestId] || {
+      rating: 5,
+      feedback: "",
+    };
+
+    if (!requestId) {
+      flashError("The booking ID is missing.");
+      return;
+    }
+
+    if (!Number.isInteger(Number(draft.rating)) ||
+        Number(draft.rating) < 1 ||
+        Number(draft.rating) > 5) {
+      flashError("Please select a rating from 1 to 5 stars.");
+      return;
+    }
+
+    setReviewSubmitting((old) => ({ ...old, [requestId]: true }));
+
+    try {
+      const response = await api.post(
+        `/api/requests/${encodeURIComponent(requestId)}/review`,
+        {
+          rating: Number(draft.rating),
+          feedback: String(draft.feedback || "").trim(),
+        }
+      );
+
+      setRequests((old) =>
+        old.map((item) =>
+          getRequestId(item) === requestId
+            ? { ...item, review_submitted: true }
+            : item
+        )
+      );
+
+      setReviewDrafts((old) => ({
+        ...old,
+        [requestId]: { rating: 5, feedback: "" },
+      }));
+
+      flashNotice(
+        response.data?.message || "Your review has been submitted."
+      );
+
+      // Refresh the worker cards so the latest average and review count
+      // can be shown when the worker is listed again.
+    } catch (err) {
+      flashError(getError(err));
+    } finally {
+      setReviewSubmitting((old) => ({
+        ...old,
+        [requestId]: false,
+      }));
+    }
+  };
+
+  const loadWorkerReviews = async () => {
+    if (user?.role !== "worker") return;
+
+    setWorkerReviewsLoading(true);
+
+    try {
+      const response = await api.get("/api/requests/worker/my-reviews");
+      setWorkerReviews(
+        Array.isArray(response.data?.reviews) ? response.data.reviews : []
+      );
+    } catch (err) {
+      console.error("Could not load worker reviews:", err);
+    } finally {
+      setWorkerReviewsLoading(false);
     }
   };
 
@@ -1619,7 +1702,11 @@ function App() {
         </div>
 
         <div className="worker-metrics">
-          <span>⭐ {Number(worker.rating || 0).toFixed(1)}</span>
+          <span>
+            ⭐ {Number(worker.rating || 0).toFixed(1)}
+            {" · "}
+            {Number(worker.total_reviews || 0)} reviews
+          </span>
           <span>🧰 {worker.experience_years || 0} yrs experience</span>
           <span>✓ {worker.completed_services || 0} jobs</span>
         </div>
@@ -1759,6 +1846,14 @@ function App() {
       setAdminProfileLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (user?.role === "worker") {
+      loadWorkerReviews();
+    } else {
+      setWorkerReviews([]);
+    }
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     if (page === "admin" && user?.role === "admin") {
@@ -1935,6 +2030,94 @@ function App() {
             )}
           </div>
         )}
+
+        {/* SOLVIX_FEEDBACK_RATINGS_V1 */}
+        {user?.role === "customer" &&
+          currentStatus === "completed" &&
+          assignedWorkerId &&
+          (
+            request.review_submitted ? (
+              <div className="review-submitted" role="status">
+                <strong>✓ Review submitted</strong>
+                <p>Thank you for sharing your experience.</p>
+              </div>
+            ) : (
+              <form
+                className="review-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  submitReview(request);
+                }}
+              >
+                <h4>Rate your service</h4>
+                <p className="muted small-text">
+                  Share your experience with this professional.
+                </p>
+
+                <div className="review-star-picker" aria-label="Choose a rating">
+                  {[1, 2, 3, 4, 5].map((star) => {
+                    const selectedRating = Number(
+                      reviewDrafts[requestId]?.rating ?? 5
+                    );
+
+                    return (
+                      <button
+                        key={star}
+                        type="button"
+                        className={
+                          star <= selectedRating
+                            ? "review-star is-selected"
+                            : "review-star"
+                        }
+                        aria-label={`${star} star${star === 1 ? "" : "s"}`}
+                        aria-pressed={star === selectedRating}
+                        onClick={() =>
+                          setReviewDrafts((old) => ({
+                            ...old,
+                            [requestId]: {
+                              rating: star,
+                              feedback: old[requestId]?.feedback || "",
+                            },
+                          }))
+                        }
+                      >
+                        ★
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label>
+                  Written feedback (optional)
+                  <textarea
+                    rows={3}
+                    maxLength={1000}
+                    placeholder="How was your experience?"
+                    value={reviewDrafts[requestId]?.feedback || ""}
+                    onChange={(event) =>
+                      setReviewDrafts((old) => ({
+                        ...old,
+                        [requestId]: {
+                          rating: old[requestId]?.rating ?? 5,
+                          feedback: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={Boolean(reviewSubmitting[requestId])}
+                >
+                  {reviewSubmitting[requestId]
+                    ? "Submitting review..."
+                    : "Submit review"}
+                </button>
+              </form>
+            )
+          )}
 
         {user?.role === "worker" && isAssignedToAnotherWorker && (
           <div className="request-notice" role="status">
@@ -2909,6 +3092,90 @@ function App() {
               <button className="btn btn-primary" onClick={updateWorkerLocation} disabled={loading}>Save service location</button>
             </section>
           </div>
+
+          {/* SOLVIX_WORKER_FEEDBACK_PANEL_V1 */}
+          <section className="section-block">
+            <div className="panel">
+              <span className="eyebrow">CUSTOMER REVIEWS</span>
+              <h2>Your ratings &amp; feedback</h2>
+              <p>
+                See how customers rate your completed services and what they
+                say about their experience.
+              </p>
+
+              <div className="subscription-summary">
+                <div className="subscription-stat">
+                  <span>Average rating</span>
+                  <strong>
+                    {workerReviews.length
+                      ? (
+                          workerReviews.reduce(
+                            (total, review) =>
+                              total + Number(review.rating || 0),
+                            0
+                          ) / workerReviews.length
+                        ).toFixed(1)
+                      : "—"}
+                    {" "}★
+                  </strong>
+                </div>
+
+                <div className="subscription-stat">
+                  <span>Total reviews</span>
+                  <strong>{workerReviews.length}</strong>
+                </div>
+              </div>
+
+              {workerReviewsLoading ? (
+                <p role="status">Loading customer feedback...</p>
+              ) : workerReviews.length === 0 ? (
+                <p className="helper-text">
+                  No customer reviews yet. Once customers review your completed
+                  services, their feedback will appear here.
+                </p>
+              ) : (
+                <div className="worker-review-list">
+                  {workerReviews.map((review) => (
+                    <article className="worker-review-item" key={review.id}>
+                      <div className="worker-review-rating">
+                        {"★".repeat(
+                          Math.max(
+                            0,
+                            Math.min(5, Number(review.rating) || 0)
+                          )
+                        )}
+                        {"☆".repeat(
+                          5 -
+                            Math.max(
+                              0,
+                              Math.min(5, Number(review.rating) || 0)
+                            )
+                        )}
+                        {" "}
+                        <span>{Number(review.rating || 0)}/5</span>
+                      </div>
+
+                      <strong>{review.service || "Completed service"}</strong>
+
+                      {review.feedback ? (
+                        <p>{review.feedback}</p>
+                      ) : (
+                        <p className="helper-text">
+                          Customer left a star rating without written feedback.
+                        </p>
+                      )}
+
+                      {review.created_at && (
+                        <small className="muted">
+                          {formatIST(review.created_at)}
+                        </small>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
 
           {/* SOLVIX_SUBSCRIPTION_CHECKOUT_V1 */}
           <section className="section-block">
