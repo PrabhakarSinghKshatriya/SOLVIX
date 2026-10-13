@@ -2142,6 +2142,67 @@ function App() {
 
         {adminOverview && (
           <>
+            <h2>Quick access</h2>
+            <p className="admin-section-hint">
+              Select a section to jump directly to its records.
+            </p>
+            <div className="admin-section-cards">
+              <button
+                type="button"
+                className="admin-section-card"
+                onClick={() => document.getElementById("admin-customers-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                <span className="admin-section-icon" aria-hidden="true">👥</span>
+                <span className="admin-section-label">Customers</span>
+                <strong>{Number(userCounts.customers ?? 0).toLocaleString()}</strong>
+                <span className="admin-section-action">View customer directory →</span>
+              </button>
+
+              <button
+                type="button"
+                className="admin-section-card"
+                onClick={() => document.getElementById("admin-workers-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                <span className="admin-section-icon" aria-hidden="true">🛠️</span>
+                <span className="admin-section-label">Workers</span>
+                <strong>{Number(workerCounts.total ?? adminWorkers.length).toLocaleString()}</strong>
+                <span className="admin-section-action">View worker directory →</span>
+              </button>
+
+              <button
+                type="button"
+                className="admin-section-card"
+                onClick={() => document.getElementById("admin-subscriptions-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                <span className="admin-section-icon" aria-hidden="true">💳</span>
+                <span className="admin-section-label">Subscription records</span>
+                <strong>{adminSubscriptions.length.toLocaleString()}</strong>
+                <span className="admin-section-action">View subscriptions →</span>
+              </button>
+
+              <button
+                type="button"
+                className="admin-section-card"
+                onClick={() => document.getElementById("admin-requests-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                <span className="admin-section-icon" aria-hidden="true">📋</span>
+                <span className="admin-section-label">Service requests</span>
+                <strong>{Number(requestCounts.total ?? adminRequests.length).toLocaleString()}</strong>
+                <span className="admin-section-action">View requests →</span>
+              </button>
+
+              <button
+                type="button"
+                className="admin-section-card"
+                onClick={() => document.getElementById("admin-payments-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                <span className="admin-section-icon" aria-hidden="true">💰</span>
+                <span className="admin-section-label">Payment records</span>
+                <strong>{adminPayments.length.toLocaleString()}</strong>
+                <span className="admin-section-action">View payments →</span>
+              </button>
+            </div>
+
             <h2>Marketplace overview</h2>
             <div className="admin-metrics">
               <Metric label="All users" value={userCounts.total} />
@@ -2170,7 +2231,7 @@ function App() {
               <Metric label="Cancelled" value={requestCounts.cancelled} />
             </div>
 
-            <h2>Customer and worker directory</h2>
+            <h2 id="admin-customers-section" className="admin-section-anchor">Customer directory</h2>
             <p>Select a customer or worker to inspect their available records.</p>
             <div className="admin-table-wrap">
               <table className="admin-table">
@@ -2179,18 +2240,16 @@ function App() {
                     <th>Name</th>
                     <th>Email</th>
                     <th>Phone</th>
-                    <th>Role</th>
                     <th>Active</th>
                     <th>Details</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {adminUsers.map((item) => (
+                  {adminUsers.filter((item) => item.role === "customer").map((item) => (
                     <tr key={item.id}>
                       <td>{item.name || "—"}</td>
                       <td>{item.email || "—"}</td>
                       <td>{item.phone || "—"}</td>
-                      <td>{item.role || "—"}</td>
                       <td>{item.is_active ? "Yes" : "No"}</td>
                       <td>
                         {item.role === "customer" ? (
@@ -2219,7 +2278,7 @@ function App() {
                     </tr>
                   ))}
                   {!adminUsers.length && (
-                    <tr><td colSpan="6">No users returned.</td></tr>
+                    <tr><td colSpan="5">No customers returned.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -2370,7 +2429,7 @@ function App() {
               </section>
             )}
 
-            <h2>Worker directory</h2>
+            <h2 id="admin-workers-section" className="admin-section-anchor">Worker directory</h2>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -2483,7 +2542,7 @@ function App() {
               </button>
             </div>
 
-            <h2>Service requests ({adminRequests.length})</h2>
+            <h2 id="admin-requests-section" className="admin-section-anchor">Service requests ({adminRequests.length})</h2>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -2541,7 +2600,7 @@ function App() {
               </table>
             </div>
 
-            <h2>Subscriptions</h2>
+            <h2 id="admin-subscriptions-section" className="admin-section-anchor">Subscription records ({adminSubscriptions.length})</h2>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -2565,7 +2624,7 @@ function App() {
               </table>
             </div>
 
-            <h2>Payment records</h2>
+            <h2 id="admin-payments-section" className="admin-section-anchor">Payment records ({adminPayments.length})</h2>
             <p>Payment status is displayed from backend records; this dashboard does not manually verify payments.</p>
             <div className="admin-table-wrap">
               <table className="admin-table">

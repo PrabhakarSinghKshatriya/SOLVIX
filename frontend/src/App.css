@@ -3126,3 +3126,76 @@ textarea {
     flex: 1 1 auto;
   }
 }
+
+
+/* SOLVIX admin quick-access sections */
+.admin-dashboard .admin-section-hint {
+  margin-top: -0.35rem;
+  color: var(--text-muted, #64748b);
+}
+
+.admin-dashboard .admin-section-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.admin-dashboard .admin-section-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 1.15rem;
+  border: 1px solid var(--border-color, #dbe3ee);
+  border-radius: 14px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.admin-dashboard .admin-section-card:hover {
+  border-color: var(--primary-color, #2563eb);
+  transform: translateY(-2px);
+}
+
+.admin-dashboard .admin-section-card:focus-visible {
+  outline: 3px solid var(--primary-color, #2563eb);
+  outline-offset: 3px;
+}
+
+.admin-dashboard .admin-section-icon {
+  font-size: 1.55rem;
+}
+
+.admin-dashboard .admin-section-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.admin-dashboard .admin-section-card strong {
+  font-size: 1.8rem;
+  line-height: 1.2;
+}
+
+.admin-dashboard .admin-section-action {
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--primary-color, #2563eb);
+  overflow-wrap: anywhere;
+}
+
+.admin-dashboard .admin-section-anchor {
+  scroll-margin-top: 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-dashboard .admin-section-card {
+    transition: none;
+  }
+}
