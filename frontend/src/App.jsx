@@ -1350,10 +1350,9 @@ function App() {
       <nav className="nav-links">
         <button onClick={() => setPage("home")}>Home</button>
         {user && (
-          <button onClick={goDashboard}>Dashboard</button>
-        )}
-        {user?.role === "admin" && (
-          <button onClick={() => setPage("admin")}>Admin</button>
+          <button onClick={user.role === "admin" ? () => setPage("admin") : goDashboard}>
+            {user.role === "admin" ? "Admin Dashboard" : "Dashboard"}
+          </button>
         )}
         {user?.role === "customer" && (
           <button onClick={loadCustomerRequests}>My bookings</button>
