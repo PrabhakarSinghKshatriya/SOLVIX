@@ -481,6 +481,55 @@ function App() {
     setUser(loggedInUser);
     setPage("dashboard");
     clearMessages();
+
+    if (loggedInUser?.role === "worker") {
+      api.get("/api/workers/profile")
+        .then((response) => {
+          const profile =
+            response.data?.profile ||
+            response.data?.worker ||
+            response.data;
+
+          if (profile?.profession) {
+            setProfileExists(true);
+            localStorage.removeItem("solvix_pending_profession");
+            return;
+          }
+
+          const pendingProfession = localStorage.getItem(
+            "solvix_pending_profession"
+          );
+          if (pendingProfession && SERVICES.some(
+            (service) => service.name === pendingProfession
+          )) {
+            setWorkerProfile((old) => ({
+              ...old,
+              profession: pendingProfession,
+            }));
+          }
+
+          setProfileExists(false);
+          setPage("profile");
+        })
+        .catch((err) => {
+          if (err?.response?.status === 404) {
+            const pendingProfession = localStorage.getItem(
+              "solvix_pending_profession"
+            );
+            if (pendingProfession && SERVICES.some(
+              (service) => service.name === pendingProfession
+            )) {
+              setWorkerProfile((old) => ({
+                ...old,
+                profession: pendingProfession,
+              }));
+            }
+
+            setProfileExists(false);
+            setPage("profile");
+          }
+        });
+    }
   };
 
   // SOLVIX_PRO_DASHBOARD_PHONE_V1
@@ -1075,6 +1124,21 @@ function App() {
   const saveWorkerProfile = async (event) => {
     event.preventDefault();
     clearMessages();
+
+    const hasLatitude = coords.latitude.trim() !== "";
+    const hasLongitude = coords.longitude.trim() !== "";
+    let location = null;
+
+    if (hasLatitude || hasLongitude) {
+      location = validCoordinates();
+      if (!location) return;
+    } else if (!profileExists) {
+      flashError(
+        "Detect or enter your service location before creating your profile."
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -1096,7 +1160,17 @@ function App() {
         setProfileExists(true);
       }
 
-      flashNotice("Worker profile saved successfully.");
+      if (location) {
+        await api.patch("/api/workers/location", location);
+      }
+
+      localStorage.removeItem("solvix_pending_profession");
+      flashNotice(
+        location
+          ? "Professional profile and service location saved successfully."
+          : "Professional profile saved successfully."
+      );
+      setPage("dashboard");
     } catch (err) {
       flashError(getError(err));
     } finally {
@@ -2479,6 +2553,38 @@ function App() {
             <label>Phone number<input type="tel" name="phone" required minLength={10} maxLength={10} pattern="[0-9]{10}" inputMode="numeric" autoComplete="tel" value={authForm.phone} onChange={updateAuthField} placeholder="Enter 10-digit mobile number" /></label>
           )}
 
+          {authStep === "credentials" &&
+            authMode === "register" &&
+            authForm.role === "worker" && (
+              <label>
+                Choose your profession
+                <select
+                  required
+                  value={workerProfile.profession}
+                  onChange={(event) => {
+                    const profession = event.target.value;
+                    setWorkerProfile((old) => ({ ...old, profession }));
+                    localStorage.setItem(
+                      "solvix_pending_profession",
+                      profession
+                    );
+                  }}
+                >
+                  {SERVICES.filter((service) => service.name !== "Other").map(
+                    (service) => (
+                      <option key={service.name} value={service.name}>
+                        {service.icon} {service.name}
+                      </option>
+                    )
+                  )}
+                  <option value="Other">✨ Other</option>
+                </select>
+                <span className="optional">
+                  You can complete your skills and service location after signing in.
+                </span>
+              </label>
+            )}
+
           {authStep === "credentials" && authMode !== "register" && (
             <label>Password<input type="password" name="password" required minLength="8" maxLength="128" autoComplete="current-password" value={authForm.password} onChange={updateAuthField} placeholder="Your password" /></label>
           )}
@@ -2643,6 +2749,70 @@ function App() {
         <label>Skills <span className="optional">Separate skills with commas</span>
           <input value={workerProfile.skills} onChange={(e) => setWorkerProfile((old) => ({ ...old, skills: e.target.value }))} placeholder="Pipe repair, tap repair, installation" />
         </label>
+
+        <div className="worker-location-block">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">SERVICE LOCATION</span>
+              <h3>Where can you provide services?</h3>
+              <p>Detect your current location or enter coordinates manually.</p>
+            </div>
+            <span className="location-icon">📍</span>
+          </div>
+
+          <button
+            className="btn btn-outline geo-button"
+            type="button"
+            onClick={getCoordinates}
+          >
+            ◎ Detect my location
+          </button>
+
+          {locationMessage && (
+            <p className="helper-text" role="status">{locationMessage}</p>
+          )}
+
+          <div className="form-grid two-columns">
+            <label>
+              Latitude
+              <input
+                type="number"
+                step="any"
+                min="-90"
+                max="90"
+                placeholder="e.g. 28.6139"
+                value={coords.latitude}
+                onChange={(event) =>
+                  setCoords((old) => ({
+                    ...old,
+                    latitude: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              Longitude
+              <input
+                type="number"
+                step="any"
+                min="-180"
+                max="180"
+                placeholder="e.g. 77.2090"
+                value={coords.longitude}
+                onChange={(event) =>
+                  setCoords((old) => ({
+                    ...old,
+                    longitude: event.target.value,
+                  }))
+                }
+              />
+            </label>
+          </div>
+          <p className="helper-text">
+            Your location helps customers find professionals in their service area.
+          </p>
+        </div>
+
         <div className="form-grid two-columns">
           <label>Years of experience
             <input type="number" min="0" max="80" required value={workerProfile.experience_years} onChange={(e) => setWorkerProfile((old) => ({ ...old, experience_years: e.target.value }))} />
