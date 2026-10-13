@@ -24,7 +24,19 @@ const SERVICES = [
   { name: "Painter", icon: "🎨", description: "Painting & wall finishing" },
   { name: "Cleaner", icon: "🧹", description: "Home & office cleaning" },
   { name: "AC Technician", icon: "❄️", description: "AC service & repair" },
-  { name: "Appliance Repair", icon: "��", description: "Home appliance repair" },
+  { name: "Appliance Repair", icon: "🔌", description: "Home appliance repair" },
+  { name: "Teacher", icon: "📚", description: "School subjects & learning support" },
+  { name: "Tutor", icon: "📝", description: "Personal and home tutoring" },
+  { name: "Graphic Designer", icon: "🎨", description: "Logos, graphics & visual design" },
+  { name: "Makeup Artist", icon: "💄", description: "Party, bridal & event makeup" },
+  { name: "Beautician", icon: "💅", description: "Beauty and personal care" },
+  { name: "Photographer", icon: "📸", description: "Events, portraits & photography" },
+  { name: "Tailor", icon: "🧵", description: "Stitching, alterations & fitting" },
+  { name: "Cook", icon: "👨‍🍳", description: "Home cooking and meal preparation" },
+  { name: "Gardener", icon: "🌱", description: "Garden care & plant maintenance" },
+  { name: "Fitness Trainer", icon: "🏋️", description: "Personal fitness and training" },
+  { name: "Computer Repair", icon: "💻", description: "Computer setup & troubleshooting" },
+  { name: "Pest Control", icon: "🛡️", description: "Pest inspection and control" },
   { name: "Other", icon: "✨", description: "Other local services" },
 ];
 
@@ -2557,7 +2569,13 @@ function App() {
               clearMessages();
               setAuthOtp("");
               setAuthStep("credentials");
-              setAuthMode("login");
+              setAuthMode((old) =>
+                authStep !== "credentials"
+                  ? "login"
+                  : old === "login"
+                    ? "register"
+                    : "login"
+              );
               setAuthForm((old) => ({ ...old, password: "" }));
             }}
           >
