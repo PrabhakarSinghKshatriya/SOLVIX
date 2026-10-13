@@ -2744,9 +2744,43 @@ function App() {
       </main>
 
       <footer className="footer">
-        <div className="footer-brand"><span className="brand-mark">S</span><span>SOLVIX<small>Connect. Solve. Get It Done.</small></span></div>
-        <p>Bringing local people and practical solutions closer together.</p>
-        <div className="footer-bottom"><span>© {new Date().getFullYear()} SOLVIX</span><span className={`footer-api ${backendStatus === "online" ? "api-ok" : ""}`}><i /> API {backendStatus}</span></div>
+        <div className="footer-main">
+          <div className="footer-brand">
+            <span className="brand-mark">S</span>
+            <span>
+              SOLVIX
+              <small>Connect. Solve. Get It Done.</small>
+            </span>
+          </div>
+
+          <p className="footer-description">
+            Bringing local people and practical solutions closer together.
+          </p>
+
+          <section className="footer-developer" aria-label="Developer contact information">
+            <span className="footer-eyebrow">THE PEOPLE BEHIND SOLVIX</span>
+            <h3>Developed &amp; Managed By</h3>
+            <p className="footer-developer-name">PRABHAKAR SINGH KSHATRIYA</p>
+
+            <div className="footer-contact">
+              <a href="mailto:prabhakarsingh5668@gmail.com">
+                <span aria-hidden="true">✉</span>
+                <span>prabhakarsingh5668@gmail.com</span>
+              </a>
+              <a href="tel:+917565081457">
+                <span aria-hidden="true">☎</span>
+                <span>+91 75650 81457</span>
+              </a>
+            </div>
+          </section>
+        </div>
+
+        <div className="footer-bottom">
+          <span>© {new Date().getFullYear()} SOLVIX. All rights reserved.</span>
+          <span className={`footer-api ${backendStatus === "online" ? "api-ok" : ""}`}>
+            <i /> API {backendStatus}
+          </span>
+        </div>
       </footer>
     </div>
   );

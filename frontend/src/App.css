@@ -2747,3 +2747,136 @@ textarea {
     margin-left: 54px;
   }
 }
+
+
+/* SOLVIX DEVELOPER FOOTER */
+.footer {
+  padding: 42px clamp(22px, 5vw, 90px) 22px;
+  background: linear-gradient(145deg, #ffffff 0%, #f5faf6 100%);
+}
+
+.footer-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px 40px;
+}
+
+.footer-description {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+  text-align: right;
+}
+
+.footer-developer {
+  grid-column: 1 / -1;
+  padding: 25px;
+  border: 1px solid #dcebe0;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #f0f8f2, #ffffff);
+}
+
+.footer-eyebrow {
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.footer-developer h3 {
+  margin: 10px 0 5px;
+  color: #637267;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.footer-developer-name {
+  margin: 0;
+  color: #174d35;
+  font-size: clamp(16px, 2.3vw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  overflow-wrap: anywhere;
+}
+
+.footer-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-top: 18px;
+}
+
+.footer-contact a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #365744;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: color 0.2s ease;
+}
+
+.footer-contact a:hover {
+  color: var(--green);
+  text-decoration: underline;
+}
+
+.footer-contact a > span:first-child {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid #d7e9dc;
+  border-radius: 9px;
+  background: #ffffff;
+  font-size: 16px;
+}
+
+@media (max-width: 600px) {
+  .footer {
+    padding: 28px 5% 18px;
+  }
+
+  .footer-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .footer-description {
+    text-align: left;
+    margin: 0;
+  }
+
+  .footer-developer {
+    grid-column: auto;
+    padding: 19px 15px;
+    margin-top: 6px;
+  }
+
+  .footer-developer-name {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .footer-contact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .footer-contact a {
+    max-width: 100%;
+    font-size: 12px;
+  }
+
+  .footer-bottom {
+    grid-column: 1 / -1;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    font-size: 11px;
+  }
+}
