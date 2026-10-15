@@ -50,12 +50,30 @@ const STATUSES = [
 ];
 
 function getError(error) {
-  return (
-    error?.response?.data?.detail ||
-    error?.response?.data?.message ||
-    error?.message ||
-    "Something went wrong. Please try again."
-  );
+  const detail =
+    error?.response?.data?.detail ??
+    error?.response?.data?.message ??
+    error?.message;
+
+  const toMessage = (value) => {
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (Array.isArray(value)) {
+      return value.map(toMessage).filter(Boolean).join(" ");
+    }
+    if (value && typeof value === "object") {
+      if (typeof value.msg === "string") return value.msg;
+      if (typeof value.message === "string") return value.message;
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return "The server returned an unexpected error.";
+      }
+    }
+    return "";
+  };
+
+  return toMessage(detail) || "Something went wrong. Please try again.";
 }
 
 function getUserId(user) {
@@ -140,6 +158,21 @@ function notificationTypeLabel(eventType) {
       .replace(/^booking_/, "")
       .replaceAll("_", " ")
       .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function displayDate(value) {
+  if (!value) return "—";
+
+  try {
+    return formatIST(value);
+  } catch (error) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+
+    return date.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+    });
+  }
 }
 
 const REQUEST_STATUS_OPTIONS = [
@@ -395,7 +428,8 @@ function App() {
     }
   }, []);
 
-  // Load notifications immediately and refresh every 15 seconds.
+  // Load regular notifications and, for admins, admin-only notifications.
+  // Both feeds appear in the same notification bell.
   useEffect(() => {
     let active = true;
 
@@ -409,11 +443,38 @@ function App() {
       }
 
       try {
-        const response = await api.get("/api/notifications?limit=50");
+        const requests = [
+          api.get("/api/notifications?limit=50"),
+        ];
+
+        if (user.role === "admin") {
+          requests.push(api.get("/api/admin/notifications?limit=100"));
+        }
+
+        const responses = await Promise.all(requests);
         if (!active) return;
 
-        setNotifications(response.data?.notifications || []);
-        setUnreadCount(Number(response.data?.unread_count || 0));
+        const regularItems = (responses[0].data?.notifications || []).map(
+          (item) => ({ ...item, notification_source: "regular" })
+        );
+
+        const adminItems = user.role === "admin"
+          ? (responses[1].data?.items || []).map((item) => ({
+              ...item,
+              admin_notification_id: item.id,
+              id: `admin:${item.id}`,
+              notification_source: "admin",
+            }))
+          : [];
+
+        const merged = [...regularItems, ...adminItems].sort(
+          (a, b) =>
+            new Date(b.created_at || 0).getTime() -
+            new Date(a.created_at || 0).getTime()
+        );
+
+        setNotifications(merged);
+        setUnreadCount(merged.filter((item) => !item.is_read).length);
       } catch {
         // Keep the dashboard usable if notifications are temporarily unavailable.
       }
@@ -431,7 +492,6 @@ function App() {
   const markNotificationRead = async (notification) => {
     if (!notification?.id || notification.is_read) return;
 
-    // Update the UI immediately; restore the server state if the request fails.
     setNotifications((old) =>
       old.map((item) =>
         item.id === notification.id ? { ...item, is_read: true } : item
@@ -440,9 +500,15 @@ function App() {
     setUnreadCount((old) => Math.max(0, old - 1));
 
     try {
-      await api.patch(
-        `/api/notifications/${encodeURIComponent(notification.id)}/read`
-      );
+      if (notification.notification_source === "admin") {
+        await api.patch(
+          `/api/admin/notifications/${encodeURIComponent(notification.admin_notification_id)}/read`
+        );
+      } else {
+        await api.patch(
+          `/api/notifications/${encodeURIComponent(notification.id)}/read`
+        );
+      }
     } catch {
       setNotifications((old) =>
         old.map((item) =>
@@ -508,10 +574,45 @@ function App() {
 
     try {
       await api.patch("/api/notifications/read-all");
+
+      if (user?.role === "admin") {
+        await api.patch("/api/admin/notifications/read-all");
+      }
     } catch {
-      setNotifications(previousNotifications);
-      setUnreadCount(previousUnreadCount);
-      flashError("Could not mark notifications as read. Please try again.");
+      // Refresh from the server because one feed may already have been updated.
+      try {
+        const requests = [api.get("/api/notifications?limit=50")];
+
+        if (user?.role === "admin") {
+          requests.push(api.get("/api/admin/notifications?limit=100"));
+        }
+
+        const responses = await Promise.all(requests);
+        const regularItems = (responses[0].data?.notifications || []).map(
+          (item) => ({ ...item, notification_source: "regular" })
+        );
+        const adminItems = user?.role === "admin"
+          ? (responses[1].data?.items || []).map((item) => ({
+              ...item,
+              admin_notification_id: item.id,
+              id: `admin:${item.id}`,
+              notification_source: "admin",
+            }))
+          : [];
+        const merged = [...regularItems, ...adminItems].sort(
+          (a, b) =>
+            new Date(b.created_at || 0).getTime() -
+            new Date(a.created_at || 0).getTime()
+        );
+
+        setNotifications(merged);
+        setUnreadCount(merged.filter((item) => !item.is_read).length);
+      } catch {
+        setNotifications(previousNotifications);
+        setUnreadCount(previousUnreadCount);
+      }
+
+      flashError("Some notifications could not be marked as read. Please try again.");
     }
   };
 
@@ -1214,6 +1315,11 @@ function App() {
 
     if (!aadhaarFile) {
       setAadhaarUploadError("Please select your Aadhaar document first.");
+      requestAnimationFrame(() => {
+        const input = document.getElementById("worker-aadhaar-file");
+        input?.scrollIntoView({ behavior: "smooth", block: "center" });
+        input?.focus({ preventScroll: true });
+      });
       return;
     }
 
@@ -1240,15 +1346,32 @@ function App() {
     setAadhaarUploadLoading(true);
     try {
       const response = await api.post("/api/workers/aadhaar", formData);
+
+      // The POST succeeded: report upload success even if refreshing status fails.
       setAadhaarUploadMessage(
-        response.data?.message || "Document submitted for admin verification."
+        "Aadhaar document uploaded successfully. Waiting for admin verification."
       );
+      setAadhaarUploadError("");
       setAadhaarFile(null);
+
       const input = document.getElementById("worker-aadhaar-file");
       if (input) input.value = "";
-      await loadWorkerAadhaarStatus();
+
+      try {
+        const statusResponse = await api.get("/api/workers/aadhaar");
+        setAadhaarStatus(statusResponse.data);
+      } catch (statusError) {
+        console.error("Upload succeeded, but Aadhaar status refresh failed:", statusError);
+        setAadhaarUploadError(
+          "Document uploaded successfully, but its latest status could not be refreshed. Please use Refresh or reload the page."
+        );
+      }
     } catch (err) {
-      setAadhaarUploadError(getError(err));
+      console.error("Aadhaar document upload failed:", err);
+      setAadhaarUploadError(
+        "Upload failed: " + getError(err)
+      );
+      setAadhaarUploadMessage("");
     } finally {
       setAadhaarUploadLoading(false);
     }
@@ -1550,7 +1673,41 @@ function App() {
       flashNotice(`Request ${action}ed successfully.`);
       await loadWorkerRequests();
     } catch (err) {
-      flashError(getError(err));
+      const errorMessage = getError(err);
+      const requiresAadhaar =
+        /aadhaar|identity document|document verification/i.test(errorMessage);
+
+      if (requiresAadhaar && user?.role === "worker") {
+        setAadhaarUploadMessage("");
+        setAadhaarUploadError(errorMessage);
+        setPage("profile");
+
+        try {
+          await loadWorkerProfile();
+        } catch (profileError) {
+          console.error("Could not load worker profile:", profileError);
+        }
+
+        setAadhaarUploadError(errorMessage);
+
+        window.setTimeout(() => {
+          const heading = document.getElementById("worker-aadhaar-heading");
+          const input = document.getElementById("worker-aadhaar-file");
+
+          heading?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+
+          if (input) {
+            window.setTimeout(() => {
+              input.focus({ preventScroll: true });
+            }, 450);
+          }
+        }, 150);
+      } else {
+        flashError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -1685,13 +1842,48 @@ function App() {
                 aria-expanded={notificationsOpen}
                 title="Notifications"
                 onClick={() => {
-                  setNotificationsOpen((old) => !old);
-                  if (!notificationsOpen) {
+                  const opening = !notificationsOpen;
+                  setNotificationsOpen(opening);
+
+                  if (opening) {
                     setNotificationsLoading(true);
-                    api.get("/api/notifications?limit=50")
-                      .then((response) => {
-                        setNotifications(response.data?.notifications || []);
-                        setUnreadCount(Number(response.data?.unread_count || 0));
+
+                    const requests = [
+                      api.get("/api/notifications?limit=50"),
+                    ];
+
+                    if (user?.role === "admin") {
+                      requests.push(api.get("/api/admin/notifications?limit=100"));
+                    }
+
+                    Promise.all(requests)
+                      .then((responses) => {
+                        const regularItems = (
+                          responses[0].data?.notifications || []
+                        ).map((item) => ({
+                          ...item,
+                          notification_source: "regular",
+                        }));
+
+                        const adminItems = user?.role === "admin"
+                          ? (responses[1].data?.items || []).map((item) => ({
+                              ...item,
+                              admin_notification_id: item.id,
+                              id: `admin:${item.id}`,
+                              notification_source: "admin",
+                            }))
+                          : [];
+
+                        const merged = [...regularItems, ...adminItems].sort(
+                          (a, b) =>
+                            new Date(b.created_at || 0).getTime() -
+                            new Date(a.created_at || 0).getTime()
+                        );
+
+                        setNotifications(merged);
+                        setUnreadCount(
+                          merged.filter((item) => !item.is_read).length
+                        );
                       })
                       .catch(() => {})
                       .finally(() => setNotificationsLoading(false));
@@ -3194,75 +3386,7 @@ function App() {
             </div>
           </section>
 
-          <section className="admin-notification-section">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">ADMIN-ONLY ACTIVITY</span>
-                <h2>Admin notifications <span className="admin-unread-badge">{adminUnreadCount} unread</span></h2>
-                <p>Registration, service request, payment and Aadhaar submission events.</p>
-              </div>
-              <div className="admin-notification-actions">
-                <button
-                  className="btn btn-outline"
-                  type="button"
-                  onClick={loadAdminNotifications}
-                  disabled={adminNotificationsLoading}
-                >
-                  Refresh
-                </button>
-                <button
-                  className="btn btn-outline"
-                  type="button"
-                  onClick={markAllAdminNotificationsRead}
-                  disabled={adminUnreadCount === 0}
-                >
-                  Mark all read
-                </button>
-              </div>
-            </div>
 
-            {adminNotificationError && (
-              <div className="notice notice-error" role="alert">{adminNotificationError}</div>
-            )}
-            {adminNotificationsLoading && <p>Loading admin notifications…</p>}
-            {!adminNotificationsLoading && adminNotifications.length === 0 && (
-              <div className="empty-state">
-                <span>🔔</span>
-                <h3>No admin notifications yet</h3>
-                <p>New administrative events will appear here.</p>
-              </div>
-            )}
-            <div className="admin-notification-list">
-              {adminNotifications.map((notification) => (
-                <article
-                  key={notification.id}
-                  className={`admin-notification-card ${notification.is_read ? "is-read" : "is-unread"}`}
-                >
-                  <div>
-                    <div className="admin-notification-title-row">
-                      <h3>{notification.title}</h3>
-                      {!notification.is_read && <span className="unread-dot">Unread</span>}
-                    </div>
-                    <p>{notification.message}</p>
-                    <small>
-                      {(notification.event_type || "").replaceAll("_", " ")}
-                      {" · "}
-                      {displayDate(notification.created_at)}
-                    </small>
-                  </div>
-                  {!notification.is_read && (
-                    <button
-                      className="btn btn-outline"
-                      type="button"
-                      onClick={() => markAdminNotificationRead(notification)}
-                    >
-                      Mark read
-                    </button>
-                  )}
-                </article>
-              ))}
-            </div>
-          </section>
           </>
         )}
       </section>
@@ -4192,7 +4316,7 @@ function App() {
           <button
             className="btn btn-primary"
             type="submit"
-            disabled={aadhaarUploadLoading || !aadhaarFile}
+            disabled={aadhaarUploadLoading}
           >
             {aadhaarUploadLoading ? "Uploading…" : aadhaarStatus?.status === "rejected"
               ? "Resubmit document →"
