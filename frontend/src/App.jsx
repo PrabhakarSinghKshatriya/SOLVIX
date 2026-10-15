@@ -222,6 +222,7 @@ function App() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminWorkers, setAdminWorkers] = useState([]);
   const [adminRequests, setAdminRequests] = useState([]);
+  const [adminRecentRequests, setAdminRecentRequests] = useState([]);
   const [adminSubscriptions, setAdminSubscriptions] = useState([]);
   const [adminPayments, setAdminPayments] = useState([]);
   const [adminProfile, setAdminProfile] = useState(null);
@@ -2226,6 +2227,7 @@ function App() {
       setAdminUsers(users.data?.items || []);
       setAdminWorkers(workers.data?.items || []);
       setAdminRequests(requests.data?.items || []);
+      setAdminRecentRequests(requests.data?.items || []);
       setAdminSubscriptions(subscriptions.data?.items || []);
       setAdminPayments(payments.data?.items || []);
     } catch (err) {
@@ -2732,6 +2734,20 @@ function App() {
         ? profileData?.jobs
         : profileData?.requests;
 
+    const toggleAdminSection = (id) => {
+      const target = document.getElementById(id);
+      if (!target) return;
+
+      const panel = target.closest("details");
+      if (!panel) return;
+
+      panel.open = !panel.open;
+
+      if (panel.open) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    };
+
     return (
       <>
       <section className="section-block admin-dashboard">
@@ -2762,13 +2778,13 @@ function App() {
           <>
             <h2>Quick access</h2>
             <p className="admin-section-hint">
-              Select a section to jump directly to its records.
+              Select a card to open or close its section.
             </p>
             <div className="admin-section-cards">
               <button
                 type="button"
                 className="admin-section-card"
-                onClick={() => document.getElementById("admin-customers-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => toggleAdminSection("admin-customers-section")}
               >
                 <span className="admin-section-icon" aria-hidden="true">👥</span>
                 <span className="admin-section-label">Customers</span>
@@ -2779,7 +2795,7 @@ function App() {
               <button
                 type="button"
                 className="admin-section-card"
-                onClick={() => document.getElementById("admin-workers-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => toggleAdminSection("admin-workers-section")}
               >
                 <span className="admin-section-icon" aria-hidden="true">🛠️</span>
                 <span className="admin-section-label">Workers</span>
@@ -2790,7 +2806,7 @@ function App() {
               <button
                 type="button"
                 className="admin-section-card"
-                onClick={() => document.getElementById("admin-subscriptions-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => toggleAdminSection("admin-subscriptions-section")}
               >
                 <span className="admin-section-icon" aria-hidden="true">💳</span>
                 <span className="admin-section-label">Subscription records</span>
@@ -2801,7 +2817,7 @@ function App() {
               <button
                 type="button"
                 className="admin-section-card"
-                onClick={() => document.getElementById("admin-requests-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => toggleAdminSection("admin-requests-section")}
               >
                 <span className="admin-section-icon" aria-hidden="true">📋</span>
                 <span className="admin-section-label">Service requests</span>
@@ -2812,7 +2828,7 @@ function App() {
               <button
                 type="button"
                 className="admin-section-card"
-                onClick={() => document.getElementById("admin-payments-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => toggleAdminSection("admin-payments-section")}
               >
                 <span className="admin-section-icon" aria-hidden="true">💰</span>
                 <span className="admin-section-label">Payment records</span>
@@ -2821,7 +2837,8 @@ function App() {
               </button>
             </div>
 
-            <h2>Marketplace overview</h2>
+            <details className="admin-collapsible">
+              <summary>Marketplace overview</summary>
             <div className="admin-metrics">
               <Metric label="All users" value={userCounts.total} />
               <Metric label="Customers" value={userCounts.customers} />
@@ -2833,14 +2850,20 @@ function App() {
               <Metric label="Verified payments" value={paymentCounts.verified} />
             </div>
 
-            <h2>Worker availability</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary>Worker availability</summary>
             <div className="admin-metrics">
               <Metric label="Registered workers" value={workerCounts.total} />
               <Metric label="Available" value={workerCounts.available} />
               <Metric label="Busy" value={workerCounts.busy} />
             </div>
 
-            <h2>Request status summary</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary>Request status summary</summary>
             <div className="admin-metrics">
               <Metric label="Requested" value={requestCounts.requested} />
               <Metric label="Accepted" value={requestCounts.accepted} />
@@ -2849,7 +2872,10 @@ function App() {
               <Metric label="Cancelled" value={requestCounts.cancelled} />
             </div>
 
-            <h2 id="admin-customers-section" className="admin-section-anchor">Customer directory</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary id="admin-customers-section" className="admin-section-anchor">Customer directory</summary>
             <p>Select a customer or worker to inspect their available records.</p>
             <div className="admin-table-wrap">
               <table className="admin-table">
@@ -3047,7 +3073,10 @@ function App() {
               </section>
             )}
 
-            <h2 id="admin-workers-section" className="admin-section-anchor">Worker directory</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary id="admin-workers-section" className="admin-section-anchor">Worker directory</summary>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -3087,7 +3116,10 @@ function App() {
               </table>
             </div>
 
-            <h2>Request filters</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary>Request filters</summary>
             <div className="admin-filter-grid">
               <label>
                 Status
@@ -3160,7 +3192,10 @@ function App() {
               </button>
             </div>
 
-            <h2 id="admin-requests-section" className="admin-section-anchor">Service requests ({adminRequests.length})</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary id="admin-requests-section" className="admin-section-anchor">Service requests ({adminRequests.length})</summary>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -3218,7 +3253,10 @@ function App() {
               </table>
             </div>
 
-            <h2 id="admin-subscriptions-section" className="admin-section-anchor">Subscription records ({adminSubscriptions.length})</h2>
+            </details>
+
+            <details className="admin-collapsible">
+              <summary id="admin-subscriptions-section" className="admin-section-anchor">Subscription records ({adminSubscriptions.length})</summary>
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -3241,8 +3279,10 @@ function App() {
                 </tbody>
               </table>
             </div>
+            </details>
 
-            <h2 id="admin-payments-section" className="admin-section-anchor">Payment records ({adminPayments.length})</h2>
+            <details className="admin-collapsible">
+              <summary id="admin-payments-section" className="admin-section-anchor">Payment records ({adminPayments.length})</summary>
             <p>Payment status is displayed from backend records; this dashboard does not manually verify payments.</p>
             <div className="admin-table-wrap">
               <table className="admin-table">
@@ -3266,11 +3306,15 @@ function App() {
                 </tbody>
               </table>
             </div>
-          <section className="admin-aadhaar-section">
+          </details>
+
+          <details className="admin-collapsible admin-aadhaar-collapsible">
+            <summary>Aadhaar verification queue</summary>
+            <section className="admin-aadhaar-section">
             <div className="section-heading">
               <div>
                 <span className="eyebrow">PRIVATE IDENTITY REVIEW</span>
-                <h2>Aadhaar verification queue</h2>
+
                 <p>Only authenticated administrators can preview documents or decide verification.</p>
               </div>
               <button
@@ -3384,6 +3428,93 @@ function App() {
                 </article>
               ))}
             </div>
+          </section>
+
+          </details>
+
+          <section className="admin-recent-activity">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">LIVE MARKETPLACE SNAPSHOT</span>
+                <h2>Currently Running / Recent Activity</h2>
+                <p>Latest 10 service requests, including active and completed work.</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={loadAdminData}
+                disabled={adminLoading}
+              >
+                {adminLoading ? "Refreshing..." : "Refresh activity"}
+              </button>
+            </div>
+
+            {(() => {
+              const recentItems = [...adminRecentRequests]
+                .sort((a, b) => {
+                  const dateA = new Date(a.updated_at || a.created_at || 0).getTime();
+                  const dateB = new Date(b.updated_at || b.created_at || 0).getTime();
+                  return dateB - dateA;
+                })
+                .slice(0, 10);
+
+              const activeStatuses = new Set([
+                "requested", "accepted", "confirmed",
+                "on_the_way", "arrived", "in_progress",
+              ]);
+
+              return (
+                <>
+                  <div className="admin-activity-summary">
+                    <span>Showing <strong>{recentItems.length}</strong> of the latest requests</span>
+                    <span>
+                      Active in this list: <strong>
+                        {recentItems.filter((item) => activeStatuses.has(item.status)).length}
+                      </strong>
+                    </span>
+                  </div>
+
+                  <div className="admin-table-wrap">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Service</th>
+                          <th>Customer</th>
+                          <th>Assigned worker</th>
+                          <th>Status</th>
+                          <th>Last activity (IST)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentItems.map((item) => (
+                          <tr key={item.id}>
+                            <td>{item.service || "—"}</td>
+                            <td>{item.customer?.name || item.customer_id || "—"}</td>
+                            <td>{item.assigned_worker?.name || item.assigned_worker_id || "Not assigned"}</td>
+                            <td>
+                              <span className={
+                                "admin-activity-status " +
+                                (activeStatuses.has(item.status)
+                                  ? "is-active"
+                                  : item.status === "completed"
+                                    ? "is-completed"
+                                    : "is-other")
+                              }>
+                                {statusLabel(item.status)}
+                              </span>
+                            </td>
+                            <td>{displayDate(item.updated_at || item.created_at)}</td>
+                          </tr>
+                        ))}
+                        {!recentItems.length && (
+                          <tr><td colSpan="5">No recent service requests found.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
           </section>
 
 

@@ -3588,3 +3588,118 @@ textarea {
     align-items: flex-start;
   }
 }
+
+
+/* SOLVIX_ADMIN_COLLAPSIBLE_AND_RECENT_ACTIVITY */
+.admin-dashboard .admin-collapsible {
+  margin: 1rem 0;
+  border: 1px solid var(--border-color, #dbe3ee);
+  border-radius: 14px;
+  background: var(--card-bg, #fff);
+  overflow: clip;
+}
+
+.admin-dashboard .admin-collapsible > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.admin-dashboard .admin-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-dashboard .admin-collapsible > summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  font-size: 1.4rem;
+  color: var(--primary-color, #2563eb);
+}
+
+.admin-dashboard .admin-collapsible[open] > summary::after {
+  content: "−";
+}
+
+.admin-dashboard .admin-collapsible > summary:hover {
+  background: var(--surface-color, #f8fafc);
+}
+
+.admin-dashboard .admin-collapsible > summary:focus-visible {
+  outline: 3px solid var(--primary-color, #2563eb);
+  outline-offset: -3px;
+}
+
+.admin-dashboard .admin-collapsible[open] > summary {
+  border-bottom: 1px solid var(--border-color, #dbe3ee);
+}
+
+.admin-dashboard .admin-collapsible > summary + * {
+  margin-top: 1rem;
+}
+
+.admin-dashboard .admin-collapsible > summary ~ * {
+  margin-right: 1rem;
+  margin-left: 1rem;
+}
+
+.admin-dashboard .admin-aadhaar-collapsible > .admin-aadhaar-section {
+  margin-top: 0;
+  border: 0;
+}
+
+.admin-dashboard .admin-recent-activity {
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border-color, #dbe3ee);
+  border-radius: 16px;
+  background: var(--card-bg, #fff);
+}
+
+.admin-dashboard .admin-activity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0;
+  color: var(--text-muted, #64748b);
+}
+
+.admin-dashboard .admin-activity-status {
+  display: inline-flex;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-dashboard .admin-activity-status.is-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-dashboard .admin-activity-status.is-completed {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.admin-dashboard .admin-activity-status.is-other {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+@media (max-width: 640px) {
+  .admin-dashboard .admin-recent-activity {
+    padding: 0.85rem;
+  }
+
+  .admin-dashboard .admin-collapsible > summary {
+    padding: 0.85rem;
+  }
+}
