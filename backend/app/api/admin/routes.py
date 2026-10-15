@@ -130,7 +130,20 @@ def list_workers(
 
     items = []
     for worker in cursor:
-        user_profile = _admin_get_user(db, str(worker.get("user_id", "")))
+        user_id = str(worker.get("user_id", ""))
+        user_profile = _admin_get_user(db, user_id)
+
+        # Prefer the latest Aadhaar decision when a record exists.
+        aadhaar_record = db["aadhaar_verifications"].find_one(
+            {"worker_id": user_id},
+            {"_id": 0, "status": 1},
+        )
+        is_verified = (
+            aadhaar_record.get("status") == "verified"
+            if aadhaar_record is not None
+            else bool(worker.get("is_verified", False))
+        )
+
         items.append({
             "id": str(worker["_id"]),
             "user_id": worker.get("user_id"),
@@ -144,7 +157,7 @@ def list_workers(
             "rating": worker.get("rating", 0),
             "total_reviews": worker.get("total_reviews", 0),
             "completed_services": worker.get("completed_services", 0),
-            "is_verified": worker.get("is_verified", False),
+            "is_verified": is_verified,
             "is_active": worker.get("is_active", True),
             "created_at": safe_datetime(worker.get("created_at")),
         })

@@ -13,8 +13,19 @@ class WorkerService:
         self.db = get_database()
         self.workers = self.db[WorkerModel.collection_name]
 
+    def _is_worker_verified(self, worker: dict) -> bool:
+        """Use the latest Aadhaar decision, with a legacy-profile fallback."""
+        user_id = str(worker.get("user_id", ""))
+        record = self.db["aadhaar_verifications"].find_one(
+            {"worker_id": user_id},
+            {"_id": 0, "status": 1},
+        )
+        if record is not None:
+            return record.get("status") == "verified"
+        return bool(worker.get("is_verified", False))
+
     def _with_public_name(self, result: dict, worker: dict) -> dict:
-        """Attach the worker's display name without exposing account email."""
+        """Attach public display data and the current verification status."""
         user_id = str(worker.get("user_id", ""))
         profile = None
         if ObjectId.is_valid(user_id):
@@ -23,6 +34,7 @@ class WorkerService:
                 {"name": 1},
             )
         result["name"] = (profile or {}).get("name") or result.get("name")
+        result["is_verified"] = self._is_worker_verified(worker)
         return result
 
     def create_profile(
@@ -340,7 +352,7 @@ class WorkerService:
 
             score += min(experience, 15)
 
-            if worker.get("is_verified", False):
+            if self._is_worker_verified(worker):
                 score += 10
 
             score += min(completed / 20, 5)
