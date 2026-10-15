@@ -43,6 +43,26 @@ class AuthService:
 
         document["_id"] = result.inserted_id
 
+        # SOLVIX_ADMIN_REGISTRATION_NOTIFICATION_V1
+        # Notification failures must never prevent successful registration.
+        try:
+            from app.services.admin_notification_service import (
+                AdminNotificationService,
+            )
+
+            AdminNotificationService().notify(
+                title="New user registration",
+                message=(
+                    f"{name.strip()} registered as {role.strip().lower()}."
+                ),
+                event_type="user_registered",
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Could not notify admins about a new registration."
+            )
+
         return UserModel.serialize(document)
 
     def authenticate_user(

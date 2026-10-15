@@ -92,6 +92,28 @@ async def create_service_request(
         longitude=data.longitude,
     )
 
+    # SOLVIX_ADMIN_NEW_SERVICE_REQUEST_NOTIFICATION_V1
+    # Do not let an admin-notification failure interrupt request creation.
+    try:
+        from app.services.admin_notification_service import (
+            AdminNotificationService,
+        )
+
+        request_id_for_admin = request.get("id") or request.get("_id")
+        AdminNotificationService().notify(
+            title="New service request",
+            message=(
+                f"New {data.service} request created by "
+                f"{current_user.get('name', 'a customer')}. "
+                f"Request ID: {request_id_for_admin or 'N/A'}."
+            ),
+            event_type="service_request_created",
+        )
+    except Exception:
+        logger.exception(
+            "Could not notify admins about a new service request."
+        )
+
     matched_workers_count = 0
 
     try:

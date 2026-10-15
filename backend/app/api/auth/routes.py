@@ -428,6 +428,7 @@ async def google_login(data: GoogleLoginRequest):
 
     users = get_database()[UserModel.collection_name]
     user = users.find_one({"email": email})
+    created_new_google_user = False
 
     if user is None:
         now = datetime.now(timezone.utc)
@@ -448,6 +449,7 @@ async def google_login(data: GoogleLoginRequest):
             result = users.insert_one(document)
             document["_id"] = result.inserted_id
             user = document
+            created_new_google_user = True
         except DuplicateKeyError:
             user = users.find_one({"email": email})
             if user is None:
@@ -461,6 +463,27 @@ async def google_login(data: GoogleLoginRequest):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account is disabled.",
         )
+
+    # SOLVIX_ADMIN_GOOGLE_REGISTRATION_NOTIFICATION_V1
+    # Existing accounts and duplicate-key recovery must not generate new-user alerts.
+    if created_new_google_user:
+        try:
+            from app.services.admin_notification_service import (
+                AdminNotificationService,
+            )
+
+            AdminNotificationService().notify(
+                title="New Google registration",
+                message=(
+                    f"{user.get('name', email)} registered as "
+                    f"{user.get('role', data.role)} using Google."
+                ),
+                event_type="google_user_registered",
+            )
+        except Exception:
+            logger.exception(
+                "Could not notify admins about a new Google registration."
+            )
 
     # Link a verified Google identity to the existing email account.
     if not user.get("google_sub"):

@@ -252,6 +252,27 @@ function App() {
   const [profileExists, setProfileExists] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
 
+  // SOLVIX_PRIVATE_AADHAAR_VERIFICATION_UI_V1
+  const [aadhaarStatus, setAadhaarStatus] = useState(null);
+  const [aadhaarStatusLoading, setAadhaarStatusLoading] = useState(false);
+  const [aadhaarUploadLoading, setAadhaarUploadLoading] = useState(false);
+  const [aadhaarUploadError, setAadhaarUploadError] = useState("");
+  const [aadhaarUploadMessage, setAadhaarUploadMessage] = useState("");
+  const [aadhaarFile, setAadhaarFile] = useState(null);
+
+  const [adminAadhaarItems, setAdminAadhaarItems] = useState([]);
+  const [adminAadhaarFilter, setAdminAadhaarFilter] = useState("pending");
+  const [adminAadhaarLoading, setAdminAadhaarLoading] = useState(false);
+  const [adminAadhaarError, setAdminAadhaarError] = useState("");
+  const [aadhaarPreview, setAadhaarPreview] = useState(null);
+  const [aadhaarDecisionLoading, setAadhaarDecisionLoading] = useState({});
+  const [aadhaarRejectionReasons, setAadhaarRejectionReasons] = useState({});
+
+  const [adminNotifications, setAdminNotifications] = useState([]);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
+  const [adminNotificationsLoading, setAdminNotificationsLoading] = useState(false);
+  const [adminNotificationError, setAdminNotificationError] = useState("");
+
   // SOLVIX_SUBSCRIPTION_CHECKOUT_V1
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -1169,6 +1190,214 @@ function App() {
     }
   };
 
+  // SOLVIX_PRIVATE_AADHAAR_VERIFICATION_UI_V1
+  const loadWorkerAadhaarStatus = async () => {
+    if (user?.role !== "worker") return;
+
+    setAadhaarStatusLoading(true);
+    setAadhaarUploadError("");
+
+    try {
+      const response = await api.get("/api/workers/aadhaar");
+      setAadhaarStatus(response.data);
+    } catch (err) {
+      setAadhaarUploadError(getError(err));
+    } finally {
+      setAadhaarStatusLoading(false);
+    }
+  };
+
+  const uploadWorkerAadhaar = async (event) => {
+    event.preventDefault();
+    setAadhaarUploadError("");
+    setAadhaarUploadMessage("");
+
+    if (!aadhaarFile) {
+      setAadhaarUploadError("Please select your Aadhaar document first.");
+      return;
+    }
+
+    const allowedTypes = [
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(aadhaarFile.type)) {
+      setAadhaarUploadError("Choose a PDF, JPEG, PNG, or WebP file.");
+      return;
+    }
+
+    if (aadhaarFile.size > 10 * 1024 * 1024) {
+      setAadhaarUploadError("Maximum file size is 10 MB.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", aadhaarFile);
+
+    setAadhaarUploadLoading(true);
+    try {
+      const response = await api.post("/api/workers/aadhaar", formData);
+      setAadhaarUploadMessage(
+        response.data?.message || "Document submitted for admin verification."
+      );
+      setAadhaarFile(null);
+      const input = document.getElementById("worker-aadhaar-file");
+      if (input) input.value = "";
+      await loadWorkerAadhaarStatus();
+    } catch (err) {
+      setAadhaarUploadError(getError(err));
+    } finally {
+      setAadhaarUploadLoading(false);
+    }
+  };
+
+  const loadAdminAadhaar = async (status = adminAadhaarFilter) => {
+    if (user?.role !== "admin") return;
+
+    setAdminAadhaarLoading(true);
+    setAdminAadhaarError("");
+    try {
+      const response = await api.get(
+        `/api/admin/aadhaar?status=${encodeURIComponent(status)}`
+      );
+      setAdminAadhaarItems(response.data?.items || []);
+    } catch (err) {
+      setAdminAadhaarError(getError(err));
+    } finally {
+      setAdminAadhaarLoading(false);
+    }
+  };
+
+  const loadAdminNotifications = async () => {
+    if (user?.role !== "admin") return;
+
+    setAdminNotificationsLoading(true);
+    setAdminNotificationError("");
+    try {
+      const response = await api.get("/api/admin/notifications?limit=100");
+      setAdminNotifications(response.data?.items || []);
+      setAdminUnreadCount(Number(response.data?.unread_count || 0));
+    } catch (err) {
+      setAdminNotificationError(getError(err));
+    } finally {
+      setAdminNotificationsLoading(false);
+    }
+  };
+
+  const previewAdminAadhaar = async (item) => {
+    if (user?.role !== "admin") return;
+
+    try {
+      const response = await api.get(
+        `/api/admin/aadhaar/${encodeURIComponent(item.worker_id)}/document`,
+        { responseType: "blob" }
+      );
+
+      const objectUrl = URL.createObjectURL(response.data);
+      setAadhaarPreview((previous) => {
+        if (previous?.url) URL.revokeObjectURL(previous.url);
+        return {
+          url: objectUrl,
+          filename: item.filename || "Aadhaar document",
+          contentType: item.content_type || response.data.type,
+        };
+      });
+    } catch (err) {
+      setAdminAadhaarError(getError(err));
+    }
+  };
+
+  const closeAadhaarPreview = () => {
+    setAadhaarPreview((previous) => {
+      if (previous?.url) URL.revokeObjectURL(previous.url);
+      return null;
+    });
+  };
+
+  const decideAdminAadhaar = async (item, decision) => {
+    if (user?.role !== "admin") return;
+
+    const reason = (aadhaarRejectionReasons[item.worker_id] || "").trim();
+    if (decision === "rejected" && !reason) {
+      setAdminAadhaarError("Enter a rejection reason before rejecting this document.");
+      return;
+    }
+
+    setAdminAadhaarError("");
+    setAadhaarDecisionLoading((old) => ({
+      ...old,
+      [item.worker_id]: true,
+    }));
+
+    try {
+      await api.post(
+        `/api/admin/aadhaar/${encodeURIComponent(item.worker_id)}/decision`,
+        {
+          decision,
+          ...(decision === "rejected" ? { rejection_reason: reason } : {}),
+        }
+      );
+
+      setAdminAadhaarItems((old) =>
+        old.filter((record) => record.worker_id !== item.worker_id)
+      );
+      setAadhaarRejectionReasons((old) => {
+        const next = { ...old };
+        delete next[item.worker_id];
+        return next;
+      });
+
+      await Promise.all([
+        loadAdminAadhaar(),
+        loadAdminNotifications(),
+      ]);
+    } catch (err) {
+      setAdminAadhaarError(getError(err));
+    } finally {
+      setAadhaarDecisionLoading((old) => ({
+        ...old,
+        [item.worker_id]: false,
+      }));
+    }
+  };
+
+  const markAdminNotificationRead = async (notification) => {
+    if (user?.role !== "admin" || notification.is_read) return;
+
+    try {
+      await api.patch(
+        `/api/admin/notifications/${encodeURIComponent(notification.id)}/read`
+      );
+      setAdminNotifications((old) =>
+        old.map((item) =>
+          item.id === notification.id
+            ? { ...item, is_read: true }
+            : item
+        )
+      );
+      setAdminUnreadCount((count) => Math.max(0, count - 1));
+    } catch (err) {
+      setAdminNotificationError(getError(err));
+    }
+  };
+
+  const markAllAdminNotificationsRead = async () => {
+    if (user?.role !== "admin") return;
+
+    try {
+      await api.patch("/api/admin/notifications/read-all");
+      setAdminNotifications((old) =>
+        old.map((item) => ({ ...item, is_read: true }))
+      );
+      setAdminUnreadCount(0);
+    } catch (err) {
+      setAdminNotificationError(getError(err));
+    }
+  };
+
   const loadWorkerProfile = async () => {
     clearMessages();
     setProfileLoading(true);
@@ -1858,8 +2087,22 @@ function App() {
   useEffect(() => {
     if (page === "admin" && user?.role === "admin") {
       loadAdminData();
+      loadAdminAadhaar();
+      loadAdminNotifications();
     }
   }, [page, user?.role]);
+
+  useEffect(() => {
+    if (page === "profile" && user?.role === "worker") {
+      loadWorkerAadhaarStatus();
+    }
+  }, [page, user?.role, user?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (aadhaarPreview?.url) URL.revokeObjectURL(aadhaarPreview.url);
+    };
+  }, [aadhaarPreview?.url]);
 
   const RequestCard = ({ request }) => {
     const requestId = getRequestId(request);
@@ -2298,6 +2541,7 @@ function App() {
         : profileData?.requests;
 
     return (
+      <>
       <section className="section-block admin-dashboard">
         <div className="section-heading">
           <div>
@@ -2830,9 +3074,228 @@ function App() {
                 </tbody>
               </table>
             </div>
+          <section className="admin-aadhaar-section">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">PRIVATE IDENTITY REVIEW</span>
+                <h2>Aadhaar verification queue</h2>
+                <p>Only authenticated administrators can preview documents or decide verification.</p>
+              </div>
+              <button
+                className="btn btn-outline"
+                type="button"
+                onClick={() => loadAdminAadhaar()}
+                disabled={adminAadhaarLoading}
+              >
+                {adminAadhaarLoading ? "Loading…" : "Refresh queue"}
+              </button>
+            </div>
+
+            {adminAadhaarError && (
+              <div className="notice notice-error" role="alert">{adminAadhaarError}</div>
+            )}
+
+            <label className="aadhaar-filter-label">
+              Filter documents
+              <select
+                value={adminAadhaarFilter}
+                onChange={(event) => {
+                  const nextStatus = event.target.value;
+                  setAdminAadhaarFilter(nextStatus);
+                  loadAdminAadhaar(nextStatus);
+                }}
+              >
+                <option value="pending">Pending review</option>
+                <option value="verified">Verified</option>
+                <option value="rejected">Rejected</option>
+                <option value="all">All documents</option>
+              </select>
+            </label>
+
+            {adminAadhaarLoading && <p>Loading verification records…</p>}
+            {!adminAadhaarLoading && adminAadhaarItems.length === 0 && (
+              <div className="empty-state">
+                <span>🪪</span>
+                <h3>No documents found</h3>
+                <p>No Aadhaar records match this filter.</p>
+              </div>
+            )}
+
+            <div className="aadhaar-admin-list">
+              {adminAadhaarItems.map((item) => (
+                <article className="aadhaar-admin-card" key={item.worker_id}>
+                  <div className="aadhaar-admin-card-header">
+                    <div>
+                      <h3>{item.worker?.name || "Worker"}</h3>
+                      <p>{item.worker?.email || "No email"}{item.worker?.phone ? ` · ${item.worker.phone}` : ""}</p>
+                    </div>
+                    <span className={`aadhaar-status aadhaar-status-${item.status}`}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <dl className="aadhaar-metadata">
+                    <div><dt>Worker ID</dt><dd>{item.worker_id}</dd></div>
+                    <div><dt>Filename</dt><dd>{item.filename || "Document"}</dd></div>
+                    <div><dt>Uploaded</dt><dd>{displayDate(item.uploaded_at)}</dd></div>
+                    <div><dt>Reviewed</dt><dd>{displayDate(item.reviewed_at)}</dd></div>
+                  </dl>
+
+                  {item.rejection_reason && (
+                    <p className="notice notice-error">
+                      <strong>Rejection reason:</strong> {item.rejection_reason}
+                    </p>
+                  )}
+
+                  <div className="aadhaar-admin-actions">
+                    <button
+                      className="btn btn-outline"
+                      type="button"
+                      onClick={() => previewAdminAadhaar(item)}
+                    >
+                      Preview document
+                    </button>
+                    {item.status !== "verified" && (
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={Boolean(aadhaarDecisionLoading[item.worker_id])}
+                        onClick={() => decideAdminAadhaar(item, "verified")}
+                      >
+                        {aadhaarDecisionLoading[item.worker_id] ? "Saving…" : "Verify"}
+                      </button>
+                    )}
+                    {item.status !== "rejected" && (
+                      <div className="aadhaar-reject-control">
+                        <input
+                          aria-label={`Rejection reason for ${item.worker?.name || item.worker_id}`}
+                          value={aadhaarRejectionReasons[item.worker_id] || ""}
+                          onChange={(event) =>
+                            setAadhaarRejectionReasons((old) => ({
+                              ...old,
+                              [item.worker_id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Reason required to reject"
+                          maxLength={1000}
+                        />
+                        <button
+                          className="btn btn-outline"
+                          type="button"
+                          disabled={Boolean(aadhaarDecisionLoading[item.worker_id])}
+                          onClick={() => decideAdminAadhaar(item, "rejected")}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="admin-notification-section">
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">ADMIN-ONLY ACTIVITY</span>
+                <h2>Admin notifications <span className="admin-unread-badge">{adminUnreadCount} unread</span></h2>
+                <p>Registration, service request, payment and Aadhaar submission events.</p>
+              </div>
+              <div className="admin-notification-actions">
+                <button
+                  className="btn btn-outline"
+                  type="button"
+                  onClick={loadAdminNotifications}
+                  disabled={adminNotificationsLoading}
+                >
+                  Refresh
+                </button>
+                <button
+                  className="btn btn-outline"
+                  type="button"
+                  onClick={markAllAdminNotificationsRead}
+                  disabled={adminUnreadCount === 0}
+                >
+                  Mark all read
+                </button>
+              </div>
+            </div>
+
+            {adminNotificationError && (
+              <div className="notice notice-error" role="alert">{adminNotificationError}</div>
+            )}
+            {adminNotificationsLoading && <p>Loading admin notifications…</p>}
+            {!adminNotificationsLoading && adminNotifications.length === 0 && (
+              <div className="empty-state">
+                <span>🔔</span>
+                <h3>No admin notifications yet</h3>
+                <p>New administrative events will appear here.</p>
+              </div>
+            )}
+            <div className="admin-notification-list">
+              {adminNotifications.map((notification) => (
+                <article
+                  key={notification.id}
+                  className={`admin-notification-card ${notification.is_read ? "is-read" : "is-unread"}`}
+                >
+                  <div>
+                    <div className="admin-notification-title-row">
+                      <h3>{notification.title}</h3>
+                      {!notification.is_read && <span className="unread-dot">Unread</span>}
+                    </div>
+                    <p>{notification.message}</p>
+                    <small>
+                      {(notification.event_type || "").replaceAll("_", " ")}
+                      {" · "}
+                      {displayDate(notification.created_at)}
+                    </small>
+                  </div>
+                  {!notification.is_read && (
+                    <button
+                      className="btn btn-outline"
+                      type="button"
+                      onClick={() => markAdminNotificationRead(notification)}
+                    >
+                      Mark read
+                    </button>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
           </>
         )}
       </section>
+
+      {aadhaarPreview && (
+        <div
+          className="aadhaar-preview-backdrop"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeAadhaarPreview();
+          }}
+        >
+          <section
+            className="aadhaar-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Private Aadhaar document preview"
+          >
+            <div className="aadhaar-preview-header">
+              <h2>{aadhaarPreview.filename}</h2>
+              <button className="btn btn-outline" type="button" onClick={closeAadhaarPreview}>
+                Close preview
+              </button>
+            </div>
+            {aadhaarPreview.contentType?.startsWith("image/") ? (
+              <img src={aadhaarPreview.url} alt="Private Aadhaar document preview" />
+            ) : (
+              <iframe title="Private Aadhaar PDF preview" src={aadhaarPreview.url} />
+            )}
+          </section>
+        </div>
+      )}
+      </>
     );
   };
 
@@ -3663,6 +4126,84 @@ function App() {
         </label>
         <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? "Saving..." : profileExists ? "Save profile changes →" : "Create worker profile →"}</button>
       </form>
+
+      <section className="panel aadhaar-panel" aria-labelledby="worker-aadhaar-heading">
+        <span className="eyebrow">IDENTITY VERIFICATION</span>
+        <h2 id="worker-aadhaar-heading">Aadhaar verification</h2>
+        <p>
+          Upload a PDF or image for private admin review. Aadhaar is not required
+          for your first five free job opportunities. After the free quota,
+          paid job access requires both an active subscription and verified Aadhaar.
+        </p>
+
+        <div className="aadhaar-status-row">
+          <span>Verification status</span>
+          <strong className={`aadhaar-status aadhaar-status-${aadhaarStatus?.status || "unknown"}`}>
+            {aadhaarStatusLoading
+              ? "Loading…"
+              : ({
+                  not_uploaded: "Not Uploaded",
+                  pending: "Pending",
+                  verified: "Verified",
+                  rejected: "Rejected",
+                }[aadhaarStatus?.status] || "Unknown")}
+          </strong>
+        </div>
+
+        {aadhaarStatus?.uploaded_at && (
+          <p className="helper-text">
+            Last uploaded: {displayDate(aadhaarStatus.uploaded_at)}
+          </p>
+        )}
+        {aadhaarStatus?.reviewed_at && (
+          <p className="helper-text">
+            Reviewed: {displayDate(aadhaarStatus.reviewed_at)}
+          </p>
+        )}
+        {aadhaarStatus?.status === "rejected" && aadhaarStatus?.rejection_reason && (
+          <div className="notice notice-error" role="alert">
+            <strong>Reason for rejection:</strong> {aadhaarStatus.rejection_reason}
+            <p>You can submit a corrected document below.</p>
+          </div>
+        )}
+
+        {aadhaarUploadError && (
+          <div className="notice notice-error" role="alert">{aadhaarUploadError}</div>
+        )}
+        {aadhaarUploadMessage && (
+          <div className="notice notice-success" role="status">{aadhaarUploadMessage}</div>
+        )}
+
+        <form className="aadhaar-upload-form" onSubmit={uploadWorkerAadhaar}>
+          <label htmlFor="worker-aadhaar-file">
+            Aadhaar document (PDF, JPEG, PNG, or WebP; maximum 10 MB)
+          </label>
+          <input
+            id="worker-aadhaar-file"
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+            onChange={(event) => {
+              setAadhaarFile(event.target.files?.[0] || null);
+              setAadhaarUploadError("");
+              setAadhaarUploadMessage("");
+            }}
+            disabled={aadhaarUploadLoading}
+          />
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={aadhaarUploadLoading || !aadhaarFile}
+          >
+            {aadhaarUploadLoading ? "Uploading…" : aadhaarStatus?.status === "rejected"
+              ? "Resubmit document →"
+              : "Upload for verification →"}
+          </button>
+        </form>
+        <p className="helper-text">
+          Documents are submitted to the protected verification service and are not
+          displayed publicly on your profile.
+        </p>
+      </section>
     </section>
   );
 

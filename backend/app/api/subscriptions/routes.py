@@ -247,6 +247,7 @@ def _activate_verified_payment(order_id: str, payment_id: str):
                 "success": True,
                 "message": "Payment already verified",
                 "subscription": _safe_subscription(subscription),
+                "_newly_activated": False,
             }
 
         now = _now()
@@ -321,10 +322,44 @@ def _activate_verified_payment(order_id: str, payment_id: str):
             "success": True,
             "message": "Payment verified and subscription activated",
             "subscription": _safe_subscription(saved),
+            "_newly_activated": True,
         }
 
     with db.client.start_session() as session:
-        return session.with_transaction(activate_in_transaction)
+        result = session.with_transaction(activate_in_transaction)
+
+    # SOLVIX_ADMIN_SUBSCRIPTION_PAYMENT_NOTIFICATION_V1
+    # Notify only after the MongoDB transaction has committed.
+    # Repeated verification must not create another admin notification.
+    newly_activated = result.pop("_newly_activated", False)
+
+    if newly_activated:
+        try:
+            from app.services.admin_notification_service import (
+                AdminNotificationService,
+            )
+
+            payment = db["payments"].find_one(
+                {"razorpay_order_id": order_id},
+                {"worker_id": 1, "plan": 1},
+            ) or {}
+
+            AdminNotificationService().notify(
+                title="Subscription payment confirmed",
+                message=(
+                    f"Payment confirmed and subscription activated for "
+                    f"worker {payment.get('worker_id', 'unknown')}. "
+                    f"Plan: {payment.get('plan', 'unknown')}. "
+                    f"Payment ID: {payment_id}."
+                ),
+                event_type="subscription_payment_confirmed",
+            )
+        except Exception:
+            logger.exception(
+                "Could not notify admins about confirmed subscription payment."
+            )
+
+    return result
 
 
 @router.post("/verify-payment")

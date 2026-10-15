@@ -11,6 +11,7 @@ from app.api.notifications.routes import router as notifications_router
 from app.api.subscriptions.routes import router as subscriptions_router
 from app.api.admin.routes import router as admin_router
 from app.api.stats.routes import router as stats_router
+from app.api.aadhaar.routes import router as aadhaar_router
 from app.config import settings
 from app.database.connection import check_database_connection, get_database
 
@@ -114,6 +115,7 @@ app.include_router(notifications_router)
 app.include_router(subscriptions_router)
 app.include_router(admin_router)
 app.include_router(stats_router)
+app.include_router(aadhaar_router)
 
 
 @app.get("/")

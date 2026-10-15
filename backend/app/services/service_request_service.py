@@ -234,6 +234,26 @@ class ServiceRequestService:
                     "Subscribe to continue accepting jobs."
                 )
 
+            # SOLVIX_AADHAAR_PAID_ACCESS_GATE_V2
+            # Once a subscription is active, Aadhaar verification is mandatory
+            # before accepting any new service request, regardless of the
+            # remaining free-opportunity count. The free counter stays frozen
+            # while the subscription is active.
+            if active_subscription:
+                aadhaar_record = self.db["aadhaar_verifications"].find_one(
+                    {
+                        "worker_id": worker_id,
+                        "status": "verified",
+                    },
+                    session=session,
+                )
+                if not aadhaar_record:
+                    raise ValueError(
+                        "Please upload Aadhaar before using services. "
+                        "Admin verification is required before you can "
+                        "accept service requests with your subscription."
+                    )
+
             worker_result = self.db["workers"].update_one(
                 {
                     "user_id": worker_id,

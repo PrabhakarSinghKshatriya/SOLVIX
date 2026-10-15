@@ -391,3 +391,220 @@ def test_worker_action_invalid_request_id_returns_none(setup_service):
 
     assert result is None
     setup_service.requests.find_one.assert_not_called()
+
+
+# SOLVIX_AADHAAR_SUBSCRIPTION_GATE_TESTS_V1
+
+def _prepare_subscription_acceptance_test(
+    service,
+    *,
+    free_used=2,
+    subscription_active=True,
+    aadhaar_verified=False,
+):
+    """Configure independent Mongo collection mocks for access-gate tests."""
+    collections = {}
+
+    def get_collection(name):
+        if name not in collections:
+            collections[name] = MagicMock()
+        return collections[name]
+
+    service.db.__getitem__.side_effect = get_collection
+
+    workers = service.db["workers"]
+    subscriptions = service.db["subscriptions"]
+    aadhaar = service.db["aadhaar_verifications"]
+
+    workers.find_one.return_value = {
+        "user_id": WORKER_ID,
+        "is_active": True,
+        "free_opportunities_used": free_used,
+    }
+
+    workers.update_one.return_value.matched_count = 1
+    workers.update_one.return_value.modified_count = 1
+
+    subscriptions.find_one.return_value = (
+        {
+            "worker_id": WORKER_ID,
+            "status": "active",
+        }
+        if subscription_active
+        else None
+    )
+
+    aadhaar.find_one.return_value = (
+        {
+            "worker_id": WORKER_ID,
+            "status": "verified",
+        }
+        if aadhaar_verified
+        else None
+    )
+
+    service.requests.find_one.return_value = {
+        "_id": ObjectId(REQUEST_ID),
+        "customer_id": CUSTOMER_ID,
+        "assigned_worker_id": None,
+        "matched_worker_ids": [WORKER_ID],
+        "status": "requested",
+    }
+
+    service.requests.find_one_and_update.return_value = {
+        "_id": ObjectId(REQUEST_ID),
+        "customer_id": CUSTOMER_ID,
+        "assigned_worker_id": WORKER_ID,
+        "matched_worker_ids": [WORKER_ID],
+        "status": "accepted",
+        "match_status": "assigned",
+    }
+
+    return workers, subscriptions, aadhaar
+
+
+def test_active_subscription_blocks_worker_without_verified_aadhaar(
+    setup_service,
+):
+    service = setup_service
+
+    _prepare_subscription_acceptance_test(
+        service,
+        free_used=2,
+        subscription_active=True,
+        aadhaar_verified=False,
+    )
+
+    with pytest.raises(ValueError, match="Please upload Aadhaar"):
+        service.worker_action(REQUEST_ID, WORKER_ID, "accept")
+
+    service.requests.find_one_and_update.assert_not_called()
+
+
+@pytest.mark.parametrize("free_used", [0, 2, 4, 5])
+def test_active_subscription_requires_aadhaar_regardless_of_free_count(
+    setup_service,
+    free_used,
+):
+    service = setup_service
+
+    _prepare_subscription_acceptance_test(
+        service,
+        free_used=free_used,
+        subscription_active=True,
+        aadhaar_verified=False,
+    )
+
+    with pytest.raises(ValueError, match="Please upload Aadhaar"):
+        service.worker_action(REQUEST_ID, WORKER_ID, "accept")
+
+    service.requests.find_one_and_update.assert_not_called()
+
+
+def test_verified_aadhaar_allows_acceptance_with_active_subscription(
+    setup_service,
+):
+    service = setup_service
+
+    workers, _, aadhaar = _prepare_subscription_acceptance_test(
+        service,
+        free_used=2,
+        subscription_active=True,
+        aadhaar_verified=True,
+    )
+
+    with patch(
+        "app.services.service_request_service.ServiceRequestModel.serialize",
+        return_value={"id": REQUEST_ID, "status": "accepted"},
+    ):
+        result = service.worker_action(
+            REQUEST_ID, WORKER_ID, "accept"
+        )
+
+    assert result["status"] == "accepted"
+    service.requests.find_one_and_update.assert_called_once()
+
+    # Only the worker availability update should occur.
+    # An active subscription must freeze the free-opportunity counter.
+    assert workers.update_one.call_count == 1
+
+    aadhaar.find_one.assert_called_once_with(
+        {
+            "worker_id": WORKER_ID,
+            "status": "verified",
+        },
+        session=service.db.client.start_session.return_value
+        .__enter__.return_value,
+    )
+
+
+def test_free_opportunities_remain_available_without_subscription(
+    setup_service,
+):
+    service = setup_service
+
+    workers, _, aadhaar = _prepare_subscription_acceptance_test(
+        service,
+        free_used=2,
+        subscription_active=False,
+        aadhaar_verified=False,
+    )
+
+    with patch(
+        "app.services.service_request_service.ServiceRequestModel.serialize",
+        return_value={"id": REQUEST_ID, "status": "accepted"},
+    ):
+        result = service.worker_action(
+            REQUEST_ID, WORKER_ID, "accept"
+        )
+
+    assert result["status"] == "accepted"
+
+    # One update marks the worker busy; the other increments free usage.
+    assert workers.update_one.call_count == 2
+    aadhaar.find_one.assert_not_called()
+
+
+def test_fifth_free_opportunity_does_not_require_aadhaar(
+    setup_service,
+):
+    service = setup_service
+
+    workers, _, aadhaar = _prepare_subscription_acceptance_test(
+        service,
+        free_used=4,
+        subscription_active=False,
+        aadhaar_verified=False,
+    )
+
+    with patch(
+        "app.services.service_request_service.ServiceRequestModel.serialize",
+        return_value={"id": REQUEST_ID, "status": "accepted"},
+    ):
+        result = service.worker_action(
+            REQUEST_ID, WORKER_ID, "accept"
+        )
+
+    assert result["status"] == "accepted"
+    assert workers.update_one.call_count == 2
+    aadhaar.find_one.assert_not_called()
+
+
+def test_all_free_opportunities_exhausted_requires_subscription(
+    setup_service,
+):
+    service = setup_service
+
+    workers, _, aadhaar = _prepare_subscription_acceptance_test(
+        service,
+        free_used=5,
+        subscription_active=False,
+        aadhaar_verified=False,
+    )
+
+    with pytest.raises(ValueError, match="Subscribe to continue"):
+        service.worker_action(REQUEST_ID, WORKER_ID, "accept")
+
+    service.requests.find_one_and_update.assert_not_called()
+    workers.update_one.assert_not_called()
+    aadhaar.find_one.assert_not_called()
