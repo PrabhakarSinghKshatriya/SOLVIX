@@ -130,9 +130,13 @@ def list_workers(
 
     items = []
     for worker in cursor:
+        user_profile = _admin_get_user(db, str(worker.get("user_id", "")))
         items.append({
             "id": str(worker["_id"]),
             "user_id": worker.get("user_id"),
+            "name": (user_profile or {}).get("name"),
+            "email": (user_profile or {}).get("email"),
+            "phone": (user_profile or {}).get("phone"),
             "profession": worker.get("profession"),
             "skills": worker.get("skills", []),
             "experience_years": worker.get("experience_years", 0),

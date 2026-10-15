@@ -375,6 +375,17 @@ def decide_aadhaar_verification(
     if not result.matched_count:
         raise HTTPException(status_code=404, detail="Uploaded document not found.")
 
+    # Synchronize the worker profile with the admin's Aadhaar decision.
+    db["workers"].update_one(
+        {"user_id": worker_id},
+        {
+            "$set": {
+                "is_verified": data.decision == "verified",
+                "updated_at": now,
+            }
+        },
+    )
+
     # Notify the worker through the existing worker notification system.
     try:
         from app.services.notification_service import NotificationService

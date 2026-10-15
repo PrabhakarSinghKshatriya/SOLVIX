@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from bson import ObjectId
+
 from pymongo.errors import DuplicateKeyError
 
 from app.database.connection import get_database
@@ -10,6 +12,18 @@ class WorkerService:
     def __init__(self):
         self.db = get_database()
         self.workers = self.db[WorkerModel.collection_name]
+
+    def _with_public_name(self, result: dict, worker: dict) -> dict:
+        """Attach the worker's display name without exposing account email."""
+        user_id = str(worker.get("user_id", ""))
+        profile = None
+        if ObjectId.is_valid(user_id):
+            profile = self.db["users"].find_one(
+                {"_id": ObjectId(user_id)},
+                {"name": 1},
+            )
+        result["name"] = (profile or {}).get("name") or result.get("name")
+        return result
 
     def create_profile(
         self,
@@ -241,6 +255,7 @@ class WorkerService:
                 continue
 
             result = WorkerModel.serialize(worker)
+            result = self._with_public_name(result, worker)
             result["distance_km"] = round(distance, 2)
             results.append(result)
 
@@ -331,6 +346,7 @@ class WorkerService:
             score += min(completed / 20, 5)
 
             result = WorkerModel.serialize(worker)
+            result = self._with_public_name(result, worker)
             result["match_score"] = round(score, 2)
             result["distance_km"] = round(distance, 2)
             matched_workers.append(result)

@@ -425,7 +425,7 @@ function App() {
 
   useEffect(() => {
     if (user) {
-      setPage("dashboard");
+      setPage(user.role === "admin" ? "admin" : "dashboard");
     }
   }, []);
 
@@ -621,7 +621,7 @@ function App() {
     localStorage.setItem("solvix_token", token);
     localStorage.setItem("solvix_user", JSON.stringify(loggedInUser));
     setUser(loggedInUser);
-    setPage("dashboard");
+    setPage(loggedInUser?.role === "admin" ? "admin" : "dashboard");
     clearMessages();
 
     if (loggedInUser?.role === "worker") {
@@ -1477,6 +1477,7 @@ function App() {
       await Promise.all([
         loadAdminAadhaar(),
         loadAdminNotifications(),
+        loadAdminData(),
       ]);
     } catch (err) {
       setAdminAadhaarError(getError(err));
@@ -2115,7 +2116,16 @@ function App() {
         <div className="worker-card-top">
           <div className="worker-avatar">{serviceIcon(profession)}</div>
           <div className="worker-title">
-            <h3>{worker.name || worker.user?.name || profession}</h3>
+            <h3>
+            {worker.name || worker.user?.name || profession}
+            {(worker.is_verified || worker.user?.is_verified) && (
+              <span
+                className="verified-badge"
+                title="Aadhaar verified"
+                aria-label="Aadhaar verified"
+              >✓</span>
+            )}
+          </h3>
             <p>{profession}</p>
           </div>
           <span className={`availability ${worker.availability === "available" ? "is-available" : ""}`}>
@@ -2251,6 +2261,13 @@ function App() {
     setAdminProfileLoading(true);
     setAdminProfile(null);
     setAdminError("");
+
+    if (kind === "worker") {
+      const customerSection = document
+        .getElementById("admin-customers-section")
+        ?.closest("details");
+      if (customerSection) customerSection.open = true;
+    }
 
     try {
       const endpoint =
@@ -3081,6 +3098,8 @@ function App() {
               <table className="admin-table">
                 <thead>
                   <tr>
+                    <th>Name</th>
+                    <th>Email</th>
                     <th>Profession</th>
                     <th>Skills</th>
                     <th>Experience</th>
@@ -3093,12 +3112,14 @@ function App() {
                 <tbody>
                   {adminWorkers.map((item) => (
                     <tr key={item.id}>
+                      <td>{item.name || "—"}</td>
+                      <td>{item.email || "—"}</td>
                       <td>{item.profession || "—"}</td>
                       <td>{Array.isArray(item.skills) ? item.skills.join(", ") : item.skills || "—"}</td>
                       <td>{item.experience_years ?? "—"}</td>
                       <td>{statusLabel(item.availability)}</td>
                       <td>{Number(item.rating || 0).toFixed(1)}</td>
-                      <td>{item.is_verified ? "Yes" : "No"}</td>
+                      <td>{item.is_verified ? "Yes ✓ Verified" : "No"}</td>
                       <td>
                         <button
                           className="btn btn-outline admin-small-button"
@@ -3110,7 +3131,7 @@ function App() {
                     </tr>
                   ))}
                   {!adminWorkers.length && (
-                    <tr><td colSpan="7">No workers returned.</td></tr>
+                    <tr><td colSpan="9">No workers returned.</td></tr>
                   )}
                 </tbody>
               </table>
