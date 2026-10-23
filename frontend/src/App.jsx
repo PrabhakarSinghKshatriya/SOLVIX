@@ -2262,12 +2262,16 @@ function App() {
     setAdminProfile(null);
     setAdminError("");
 
-    if (kind === "worker") {
-      const customerSection = document
-        .getElementById("admin-customers-section")
-        ?.closest("details");
-      if (customerSection) customerSection.open = true;
-    }
+    const sectionId =
+      kind === "worker"
+        ? "admin-workers-section"
+        : "admin-customers-section";
+
+    const targetSection = document
+      .getElementById(sectionId)
+      ?.closest("details");
+
+    if (targetSection) targetSection.open = true;
 
     try {
       const endpoint =
@@ -2945,6 +2949,8 @@ function App() {
               </table>
             </div>
 
+            </details>
+
             {adminProfileLoading && <p>Loading profile details...</p>}
 
             {profileData && (
@@ -3089,8 +3095,6 @@ function App() {
                 )}
               </section>
             )}
-
-            </details>
 
             <details className="admin-collapsible">
               <summary id="admin-workers-section" className="admin-section-anchor">Worker directory</summary>
