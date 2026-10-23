@@ -450,6 +450,7 @@ async def update_request_status(
     request_service = ServiceRequestService()
 
     try:
+
         request = request_service.transition_status(
             request_id=request_id,
             user_id=current_user["user_id"],
@@ -463,26 +464,60 @@ async def update_request_status(
                 detail="Service request not found",
             )
 
-        labels = {
-            "confirmed": "Booking confirmed",
-            "on_the_way": "Worker is on the way",
-            "arrived": "Worker has arrived",
-            "in_progress": "Service has started",
-            "completed": "Service completed",
-            "cancelled": "Booking cancelled",
-        }
-        recipient_id = (
-            request.get("customer_id")
-            if current_user["role"] == "worker"
-            else request.get("assigned_worker_id")
-        )
-        _safe_notify(
-            recipient_id,
-            labels.get(data.status, "Booking updated"),
-            "Booking status changed to " + data.status.replace("_", " ") + ".",
-            "booking_" + data.status,
-            request_id,
-        )
+        previous_status = request.pop("_previous_status", None)
+        status_changed = bool(request.pop("_status_changed", False))
+        current_status = request.get("status")
+
+        if status_changed:
+            try:
+                from app.services.admin_notification_service import (
+                    AdminNotificationService,
+                )
+
+                request_label = request.get("id") or request.get("_id") or request_id
+                actor_role = current_user.get("role", "user")
+
+                AdminNotificationService().notify(
+                    title="Service request status updated",
+                    message=(
+                        f"Service request {request_label} status changed "
+                        f"from {previous_status or 'unknown'} to "
+                        f"{current_status or data.status} by {actor_role}."
+                    ),
+                    event_type=(
+                        "service_request_"
+                        + str(current_status or data.status).replace("-", "_")
+                    ),
+                )
+            except Exception:
+                logger.exception(
+                    "Could not notify admins about service request status change."
+                )
+
+            labels = {
+                "confirmed": "Booking confirmed",
+                "on_the_way": "Worker is on the way",
+                "arrived": "Worker has arrived",
+                "in_progress": "Service has started",
+                "completed": "Service completed",
+                "cancelled": "Booking cancelled",
+            }
+
+            recipient_id = (
+                request.get("customer_id")
+                if current_user["role"] == "worker"
+                else request.get("assigned_worker_id")
+            )
+
+            _safe_notify(
+                recipient_id,
+                labels.get(data.status, "Booking updated"),
+                "Booking status changed to "
+                + data.status.replace("_", " ")
+                + ".",
+                "booking_" + data.status,
+                request_id,
+            )
 
         return {
             "success": True,

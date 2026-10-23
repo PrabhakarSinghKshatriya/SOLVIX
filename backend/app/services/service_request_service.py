@@ -402,7 +402,7 @@ class ServiceRequestService:
             # Preserve role permissions even for same-status selections.
             # Re-selecting the existing status is a successful no-op.
             if new_status == current_status:
-                return request
+                return request, False, current_status
 
             # Completed and rejected requests are terminal.
             if current_status in ("completed", "rejected"):
@@ -514,7 +514,7 @@ class ServiceRequestService:
                         session=session,
                     )
 
-            return result
+            return result, True, current_status
 
         with self.db.client.start_session() as session:
             result = session.with_transaction(transaction_work)
@@ -522,7 +522,11 @@ class ServiceRequestService:
         if result is None:
             return None
 
-        return ServiceRequestModel.serialize(result)
+        document, status_changed, previous_status = result
+        serialized = ServiceRequestModel.serialize(document)
+        serialized['_status_changed'] = status_changed
+        serialized['_previous_status'] = previous_status
+        return serialized
 
     def get_worker_requests(
         self,
