@@ -169,48 +169,62 @@ async def create_service_request(
 # SOLVIX_PRIVATE_DASHBOARD_STATS_V1
 
 def _dashboard_stats(owner_field: str, owner_id: str, role: str):
-    db = get_database()
-    collection = db["service_requests"]
-
-    # The service-request collection name may be configured through the
-    # service itself; use that collection for consistent dashboard data.
     service = ServiceRequestService()
     collection = service.requests
 
-    if role == "worker":
-        query = {"assigned_worker_id": owner_id}
-    else:
-        query = {"customer_id": owner_id}
+    query = {owner_field: owner_id}
 
-    records = list(collection.find(query).sort("created_at", -1))
-    statuses = [str(record.get("status", "requested")) for record in records]
-
-    active_statuses = {
+    active_statuses = [
         "accepted",
         "confirmed",
         "on_the_way",
         "arrived",
         "in_progress",
-    }
-    completed = statuses.count("completed")
-    cancelled = statuses.count("cancelled")
-    denominator = completed + cancelled
+    ]
+
+    # Count records inside MongoDB instead of loading the full history.
+    total = collection.count_documents(query)
+
+    active = collection.count_documents({
+        **query,
+        "status": {"$in": active_statuses},
+    })
+
+    completed = collection.count_documents({
+        **query,
+        "status": "completed",
+    })
+
+    cancelled = collection.count_documents({
+        **query,
+        "status": "cancelled",
+    })
+
+    # Only retrieve the latest eight records for the dashboard.
+    recent_cursor = (
+        collection.find(query)
+        .sort("created_at", -1)
+        .limit(8)
+    )
 
     recent = [
         ServiceRequestModel.serialize(record)
-        for record in records[:8]
+        for record in recent_cursor
     ]
+
+    denominator = completed + cancelled
 
     return {
         "success": True,
         "role": role,
-        "total_jobs" if role == "worker" else "total_bookings": len(records),
-        "active_jobs" if role == "worker" else "active_bookings": sum(
-            status in active_statuses for status in statuses
-        ),
+        "total_jobs" if role == "worker" else "total_bookings": total,
+        "active_jobs" if role == "worker" else "active_bookings": active,
         "completed_jobs" if role == "worker" else "completed_bookings": completed,
         "cancelled_jobs" if role == "worker" else "cancelled_bookings": cancelled,
-        "completion_rate": round(completed * 100 / denominator, 1) if denominator else 0,
+        "completion_rate": (
+            round(completed * 100 / denominator, 1)
+            if denominator else 0
+        ),
         "recent_requests": recent,
     }
 

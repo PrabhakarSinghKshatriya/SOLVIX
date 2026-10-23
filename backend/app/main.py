@@ -57,6 +57,26 @@ async def lifespan(app: FastAPI):
             name="worker_location_2dsphere",
         )
 
+    # Support customer and worker dashboard request queries.
+    service_requests = db["service_requests"]
+
+    service_requests.create_index(
+        [("customer_id", 1), ("created_at", -1)],
+        name="service_requests_customer_created",
+    )
+    service_requests.create_index(
+        [("status", 1), ("created_at", -1)],
+        name="service_requests_status_created",
+    )
+    service_requests.create_index(
+        [("matched_worker_ids", 1), ("created_at", -1)],
+        name="service_requests_matched_worker_created",
+    )
+    service_requests.create_index(
+        [("assigned_worker_id", 1), ("created_at", -1)],
+        name="service_requests_assigned_worker_created",
+    )
+
     logger.info("SOLVIX database indexes initialized successfully")
 
     db["notifications"].create_index(

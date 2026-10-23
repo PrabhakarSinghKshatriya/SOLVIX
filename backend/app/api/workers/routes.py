@@ -128,7 +128,7 @@ async def update_worker_location(
 @router.post(
     "/nearby",
 )
-async def find_nearby_workers(
+def find_nearby_workers(
     data: NearbyWorkersRequest,
     current_user: dict = Depends(
         require_role("customer")
@@ -153,7 +153,7 @@ async def find_nearby_workers(
 @router.post(
     "/match",
 )
-async def match_workers(
+def match_workers(
     data: WorkerMatchingRequest,
     current_user: dict = Depends(
         require_role("customer")

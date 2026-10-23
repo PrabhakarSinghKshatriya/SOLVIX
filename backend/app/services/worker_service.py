@@ -37,6 +37,69 @@ class WorkerService:
         result["is_verified"] = self._is_worker_verified(worker)
         return result
 
+    def _batch_public_data(self, workers: list[dict]) -> dict:
+        """Fetch worker names and Aadhaar decisions in batches."""
+        user_ids = list(dict.fromkeys(
+            str(worker.get("user_id", ""))
+            for worker in workers
+            if worker.get("user_id")
+        ))
+
+        object_ids = [
+            ObjectId(user_id)
+            for user_id in user_ids
+            if ObjectId.is_valid(user_id)
+        ]
+
+        names = {}
+        if object_ids:
+            for profile in self.db["users"].find(
+                {"_id": {"$in": object_ids}},
+                {"name": 1},
+            ):
+                names[str(profile["_id"])] = profile.get("name")
+
+        verification_status = {}
+        if user_ids:
+            for record in self.db["aadhaar_verifications"].find(
+                {"worker_id": {"$in": user_ids}},
+                {"_id": 0, "worker_id": 1, "status": 1},
+            ):
+                worker_id = str(record.get("worker_id", ""))
+                # The application intends one verification record per worker.
+                # Keep the first result if legacy duplicate records exist.
+                if worker_id not in verification_status:
+                    verification_status[worker_id] = (
+                        record.get("status") == "verified"
+                    )
+
+        verified = {}
+        for worker in workers:
+            user_id = str(worker.get("user_id", ""))
+            if user_id in verification_status:
+                verified[user_id] = verification_status[user_id]
+            else:
+                # Preserve the legacy fallback only when no Aadhaar record exists.
+                verified[user_id] = bool(worker.get("is_verified", False))
+
+        return {"names": names, "verified": verified}
+
+    @staticmethod
+    def _apply_public_data(
+        result: dict,
+        worker: dict,
+        public_data: dict,
+    ) -> dict:
+        """Attach batched public name and verification information."""
+        user_id = str(worker.get("user_id", ""))
+        result["name"] = (
+            public_data["names"].get(user_id) or result.get("name")
+        )
+        result["is_verified"] = public_data["verified"].get(
+            user_id, bool(worker.get("is_verified", False))
+        )
+        return result
+
     def create_profile(
         self,
         user_id: str,
@@ -248,8 +311,7 @@ class WorkerService:
             "is_active": True,
         })
 
-        results = []
-
+        eligible = []
         for worker in cursor:
             coordinates = self._coordinates(worker)
             if coordinates is None:
@@ -262,12 +324,19 @@ class WorkerService:
 
             if distance is None or distance > max_distance_km:
                 continue
-
             if not self._within_service_radius(worker, distance):
                 continue
 
+            eligible.append((worker, distance))
+
+        public_data = self._batch_public_data(
+            [worker for worker, _ in eligible]
+        )
+
+        results = []
+        for worker, distance in eligible:
             result = WorkerModel.serialize(worker)
-            result = self._with_public_name(result, worker)
+            result = self._apply_public_data(result, worker, public_data)
             result["distance_km"] = round(distance, 2)
             results.append(result)
 
@@ -307,8 +376,7 @@ class WorkerService:
             "is_active": True,
         })
 
-        matched_workers = []
-
+        eligible = []
         for worker in cursor:
             coordinates = self._coordinates(worker)
             if coordinates is None:
@@ -321,7 +389,6 @@ class WorkerService:
 
             if distance is None or distance > radius_km:
                 continue
-
             if not self._within_service_radius(worker, distance):
                 continue
 
@@ -338,10 +405,17 @@ class WorkerService:
                     for skill in skills
                 )
             )
-
             if not skill_match:
                 continue
 
+            eligible.append((worker, distance))
+
+        public_data = self._batch_public_data(
+            [worker for worker, _ in eligible]
+        )
+
+        matched_workers = []
+        for worker, distance in eligible:
             rating = float(worker.get("rating", 0) or 0)
             experience = float(worker.get("experience_years", 0) or 0)
             completed = int(worker.get("completed_services", 0) or 0)
@@ -349,16 +423,18 @@ class WorkerService:
             score = 50
             if rating > 0:
                 score += min(rating * 4, 20)
-
             score += min(experience, 15)
 
-            if self._is_worker_verified(worker):
+            user_id = str(worker.get("user_id", ""))
+            if public_data["verified"].get(
+                user_id, bool(worker.get("is_verified", False))
+            ):
                 score += 10
 
             score += min(completed / 20, 5)
 
             result = WorkerModel.serialize(worker)
-            result = self._with_public_name(result, worker)
+            result = self._apply_public_data(result, worker, public_data)
             result["match_score"] = round(score, 2)
             result["distance_km"] = round(distance, 2)
             matched_workers.append(result)

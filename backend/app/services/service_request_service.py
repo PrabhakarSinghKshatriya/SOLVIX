@@ -553,6 +553,15 @@ class ServiceRequestService:
             assigned_worker_id = request.get("assigned_worker_id")
             matched_ids = list(request.get("matched_worker_ids") or [])
 
+            # A previously matched worker can see this request without
+            # repeating the geospatial and skill-matching queries.
+            # Keep the existing visibility behavior unchanged.
+            if worker_id in matched_ids:
+                visible_requests.append(
+                    ServiceRequestModel.serialize(request)
+                )
+                continue
+
             # Already assigned requests are visible only to the assigned
             # worker and workers who were previously matched to them.
             if assigned_worker_id and assigned_worker_id != worker_id:

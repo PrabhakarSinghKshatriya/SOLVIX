@@ -608,3 +608,91 @@ def test_all_free_opportunities_exhausted_requires_subscription(
     service.requests.find_one_and_update.assert_not_called()
     workers.update_one.assert_not_called()
     aadhaar.find_one.assert_not_called()
+
+
+def test_worker_dashboard_skips_rematching_previously_matched_worker(
+    setup_service,
+):
+    service = setup_service
+    request = {
+        "_id": ObjectId(REQUEST_ID),
+        "customer_id": CUSTOMER_ID,
+        "assigned_worker_id": None,
+        "matched_worker_ids": [WORKER_ID],
+        "status": "requested",
+        "location": {"coordinates": [77.2090, 28.6139]},
+        "service": "Plumber",
+    }
+    service.requests.find.return_value.sort.return_value = [request]
+
+    with (
+        patch("app.services.worker_service.WorkerService") as worker_class,
+        patch(
+            "app.services.service_request_service.ServiceRequestModel.serialize",
+            return_value={"id": REQUEST_ID, "status": "requested"},
+        ),
+    ):
+        result = service.get_worker_requests(WORKER_ID)
+
+    assert result == [{"id": REQUEST_ID, "status": "requested"}]
+    worker_class.return_value.match_workers.assert_not_called()
+    service.requests.update_one.assert_not_called()
+
+
+def test_worker_dashboard_matches_unmatched_pending_request(setup_service):
+    service = setup_service
+    request = {
+        "_id": ObjectId(REQUEST_ID),
+        "customer_id": CUSTOMER_ID,
+        "assigned_worker_id": None,
+        "matched_worker_ids": [],
+        "status": "requested",
+        "location": {"coordinates": [77.2090, 28.6139]},
+        "service": "Plumber",
+    }
+    service.requests.find.return_value.sort.return_value = [request]
+
+    with (
+        patch("app.services.worker_service.WorkerService") as worker_class,
+        patch(
+            "app.services.service_request_service.ServiceRequestModel.serialize",
+            return_value={"id": REQUEST_ID, "status": "requested"},
+        ),
+    ):
+        worker_class.return_value.match_workers.return_value = [
+            {"user_id": WORKER_ID}
+        ]
+
+        result = service.get_worker_requests(WORKER_ID)
+
+    worker_class.return_value.match_workers.assert_called_once_with(
+        latitude=28.6139,
+        longitude=77.2090,
+        service="Plumber",
+    )
+    service.requests.update_one.assert_called_once()
+    assert result == [{"id": REQUEST_ID, "status": "requested"}]
+
+
+def test_worker_dashboard_shows_own_assigned_request(setup_service):
+    service = setup_service
+    request = {
+        "_id": ObjectId(REQUEST_ID),
+        "customer_id": CUSTOMER_ID,
+        "assigned_worker_id": WORKER_ID,
+        "matched_worker_ids": [],
+        "status": "accepted",
+    }
+    service.requests.find.return_value.sort.return_value = [request]
+
+    with (
+        patch("app.services.worker_service.WorkerService") as worker_class,
+        patch(
+            "app.services.service_request_service.ServiceRequestModel.serialize",
+            return_value={"id": REQUEST_ID, "status": "accepted"},
+        ),
+    ):
+        result = service.get_worker_requests(WORKER_ID)
+
+    assert result == [{"id": REQUEST_ID, "status": "accepted"}]
+    worker_class.return_value.match_workers.assert_not_called()
