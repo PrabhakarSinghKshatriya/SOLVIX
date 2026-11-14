@@ -2688,7 +2688,6 @@ function App() {
   };
 
   const AdminPage = () => {
-    const [activeAdminNav, setActiveAdminNav] = useState("admin-overview-section");
     const overview = adminOverview || {};
     const userCounts = overview.users || {};
     const workerCounts = overview.workers || {};
@@ -2831,7 +2830,16 @@ function App() {
       const panel = target.closest("details");
       if (panel) panel.open = true;
 
-      setActiveAdminNav(id);
+      document.querySelectorAll(".admin-sidebar-link").forEach((button) => {
+        const active = button.dataset.adminSection === id;
+        button.classList.toggle("is-active", active);
+        if (active) {
+          button.setAttribute("aria-current", "page");
+        } else {
+          button.removeAttribute("aria-current");
+        }
+      });
+
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     };
 
@@ -2876,11 +2884,8 @@ function App() {
               <button
                 type="button"
                 key={item.id}
-                className={
-                  "admin-sidebar-link" +
-                  (activeAdminNav === item.id ? " is-active" : "")
-                }
-                aria-current={activeAdminNav === item.id ? "page" : undefined}
+                data-admin-section={item.id}
+                className="admin-sidebar-link"
                 onClick={() => navigateAdminSection(item.id)}
               >
                 <span aria-hidden="true">{item.icon}</span>
