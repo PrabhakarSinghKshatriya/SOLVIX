@@ -193,6 +193,60 @@ function statusLabel(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+
+function LanguageTranslator() {
+  useEffect(() => {
+    const initializeTranslator = () => {
+      if (
+        !window.google?.translate?.TranslateElement ||
+        !document.getElementById("solvix-google-translate")
+      ) {
+        return;
+      }
+
+      if (document.querySelector("#solvix-google-translate .goog-te-gadget")) {
+        return;
+      }
+
+      new window.google.translate.TranslateElement(
+        {
+          pageLanguage: "en",
+          includedLanguages: "en,hi,bn,ta,te,mr,gu,pa,ur",
+          autoDisplay: false,
+          layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
+        },
+        "solvix-google-translate"
+      );
+    };
+
+    window.googleTranslateElementInit = initializeTranslator;
+
+    if (window.google?.translate?.TranslateElement) {
+      initializeTranslator();
+    } else if (!document.getElementById("solvix-google-translate-script")) {
+      const script = document.createElement("script");
+      script.id = "solvix-google-translate-script";
+      script.src =
+        "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+      script.async = true;
+      script.onerror = () => {
+        const target = document.getElementById("solvix-google-translate");
+        if (target) {
+          target.textContent = "Translation unavailable";
+        }
+      };
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  return (
+    <div className="solvix-language-translator">
+      <span className="solvix-language-label">🌐 Language</span>
+      <div id="solvix-google-translate" />
+    </div>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(() => {
     try {
@@ -2634,6 +2688,7 @@ function App() {
   };
 
   const AdminPage = () => {
+    const [activeAdminNav, setActiveAdminNav] = useState("admin-overview-section");
     const overview = adminOverview || {};
     const userCounts = overview.users || {};
     const workerCounts = overview.workers || {};
@@ -2769,6 +2824,17 @@ function App() {
       }
     };
 
+    const navigateAdminSection = (id) => {
+      const target = document.getElementById(id);
+      if (!target) return;
+
+      const panel = target.closest("details");
+      if (panel) panel.open = true;
+
+      setActiveAdminNav(id);
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
     return (
       <>
       <section className="section-block admin-dashboard">
@@ -2787,6 +2853,44 @@ function App() {
           </button>
         </div>
 
+        <div className="admin-layout">
+          <aside className="admin-sidebar" aria-label="Admin navigation">
+            <div className="admin-sidebar-heading">
+              <span>CONTROL PANEL</span>
+              <strong>Navigation</strong>
+            </div>
+
+            {[
+              { id: "admin-overview-section", icon: "📊", label: "Overview" },
+              { id: "admin-availability-section", icon: "🟢", label: "Worker availability" },
+              { id: "admin-status-section", icon: "📈", label: "Request summary" },
+              { id: "admin-customers-section", icon: "👥", label: "Customers" },
+              { id: "admin-workers-section", icon: "🛠️", label: "Workers" },
+              { id: "admin-filters-section", icon: "🔎", label: "Request filters" },
+              { id: "admin-requests-section", icon: "📋", label: "Service requests" },
+              { id: "admin-subscriptions-section", icon: "💳", label: "Subscriptions" },
+              { id: "admin-payments-section", icon: "💰", label: "Payments" },
+              { id: "admin-aadhaar-section", icon: "🪪", label: "Aadhaar verification" },
+              { id: "admin-recent-section", icon: "🕒", label: "Recent activity" },
+            ].map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={
+                  "admin-sidebar-link" +
+                  (activeAdminNav === item.id ? " is-active" : "")
+                }
+                aria-current={activeAdminNav === item.id ? "page" : undefined}
+                onClick={() => navigateAdminSection(item.id)}
+              >
+                <span aria-hidden="true">{item.icon}</span>
+                <span>{item.label}</span>
+                <span className="admin-sidebar-arrow">›</span>
+              </button>
+            ))}
+          </aside>
+
+          <div className="admin-main-content">
         {adminError && (
           <div className="notice notice-error" role="alert">
             {adminError}
@@ -2859,7 +2963,7 @@ function App() {
             </div>
 
             <details className="admin-collapsible">
-              <summary>Marketplace overview</summary>
+              <summary id="admin-overview-section" className="admin-section-anchor">Marketplace overview</summary>
             <div className="admin-metrics">
               <Metric label="All users" value={userCounts.total} />
               <Metric label="Customers" value={userCounts.customers} />
@@ -2874,7 +2978,7 @@ function App() {
             </details>
 
             <details className="admin-collapsible">
-              <summary>Worker availability</summary>
+              <summary id="admin-availability-section" className="admin-section-anchor">Worker availability</summary>
             <div className="admin-metrics">
               <Metric label="Registered workers" value={workerCounts.total} />
               <Metric label="Available" value={workerCounts.available} />
@@ -2884,7 +2988,7 @@ function App() {
             </details>
 
             <details className="admin-collapsible">
-              <summary>Request status summary</summary>
+              <summary id="admin-status-section" className="admin-section-anchor">Request status summary</summary>
             <div className="admin-metrics">
               <Metric label="Requested" value={requestCounts.requested} />
               <Metric label="Accepted" value={requestCounts.accepted} />
@@ -3144,7 +3248,7 @@ function App() {
             </details>
 
             <details className="admin-collapsible">
-              <summary>Request filters</summary>
+              <summary id="admin-filters-section" className="admin-section-anchor">Request filters</summary>
             <div className="admin-filter-grid">
               <label>
                 Status
@@ -3334,7 +3438,7 @@ function App() {
           </details>
 
           <details className="admin-collapsible admin-aadhaar-collapsible">
-            <summary>Aadhaar verification queue</summary>
+            <summary id="admin-aadhaar-section" className="admin-section-anchor">Aadhaar verification queue</summary>
             <section className="admin-aadhaar-section">
             <div className="section-heading">
               <div>
@@ -3457,7 +3561,7 @@ function App() {
 
           </details>
 
-          <section className="admin-recent-activity">
+          <section id="admin-recent-section" className="admin-recent-activity">
             <div className="section-heading">
               <div>
                 <span className="eyebrow">LIVE MARKETPLACE SNAPSHOT</span>
@@ -3545,6 +3649,8 @@ function App() {
 
           </>
         )}
+          </div>
+        </div>
       </section>
 
       {aadhaarPreview && (
@@ -4511,6 +4617,7 @@ function App() {
   return (
     <div className="app-shell">
       {Header()}
+      {page !== "admin" && user?.role !== "admin" && <LanguageTranslator />}
 
       <main className="main-content">
         {Notice()}

@@ -4308,3 +4308,189 @@ textarea {
 }
 
 /* End SOLVIX PROFESSIONAL ADMIN UI V1 */
+
+
+
+/* ==========================================
+   SOLVIX ADMIN SIDEBAR NAVIGATION
+========================================== */
+
+.admin-dashboard .admin-layout {
+  display: grid;
+  grid-template-columns: 245px minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.admin-dashboard .admin-sidebar {
+  position: sticky;
+  top: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 17px 12px;
+  border: 1px solid #e2eaf3;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 8px 25px rgba(15, 23, 42, .045);
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
+.admin-dashboard .admin-sidebar-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px 10px 14px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.admin-dashboard .admin-sidebar-heading > span {
+  color: #8492a6;
+  font-size: .67rem;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.admin-dashboard .admin-sidebar-heading strong {
+  color: #1e293b;
+  font-size: 1.05rem;
+}
+
+.admin-dashboard .admin-sidebar-link {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #526176;
+  text-align: left;
+  font: inherit;
+  font-size: .84rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
+}
+
+.admin-dashboard .admin-sidebar-link:hover {
+  background: #f3f8f5;
+  color: var(--green-dark);
+}
+
+.admin-dashboard .admin-sidebar-link.is-active {
+  color: var(--green-dark);
+  background: #eaf6ef;
+  border-color: #d5ecdf;
+  font-weight: 800;
+}
+
+.admin-dashboard .admin-sidebar-arrow {
+  margin-left: auto;
+  font-size: 1.2rem;
+  opacity: .6;
+}
+
+.admin-dashboard .admin-main-content {
+  min-width: 0;
+}
+
+.admin-dashboard .admin-section-anchor {
+  scroll-margin-top: 115px;
+}
+
+@media (max-width: 900px) {
+  .admin-dashboard .admin-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .admin-dashboard .admin-sidebar {
+    position: static;
+    max-height: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .admin-dashboard .admin-sidebar-heading {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-dashboard .admin-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 11px;
+  }
+
+  .admin-dashboard .admin-sidebar-link {
+    min-height: 40px;
+  }
+}
+
+/* ==========================================
+   PUBLIC WEBSITE LANGUAGE TRANSLATOR
+========================================== */
+
+.solvix-language-translator {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 145px;
+  max-width: calc(100vw - 30px);
+  padding: 10px 13px;
+  border: 1px solid #dce8e0;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .97);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .14);
+}
+
+.solvix-language-label {
+  color: #405449;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.solvix-language-translator .goog-te-gadget {
+  color: #526176 !important;
+  font-family: inherit !important;
+  font-size: 0 !important;
+}
+
+.solvix-language-translator .goog-te-gadget .goog-te-combo {
+  width: 100%;
+  max-width: 210px;
+  margin: 3px 0 0 !important;
+  padding: 7px 9px;
+  border: 1px solid #dce5df;
+  border-radius: 8px;
+  background: #fff;
+  color: #26372d;
+  font: 600 12px inherit;
+}
+
+.solvix-language-translator .goog-logo-link,
+.solvix-language-translator .goog-te-gadget span {
+  display: none !important;
+}
+
+@media (max-width: 600px) {
+  .solvix-language-translator {
+    right: 10px;
+    bottom: 10px;
+    min-width: 130px;
+    padding: 8px 10px;
+  }
+}
+
+/* End SOLVIX admin navigation and language translator */
