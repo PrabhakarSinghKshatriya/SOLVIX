@@ -1,3 +1,22 @@
+🔗 Official SOLVIX Links
+
+<div align="center">
+
+🌐 Live Application
+
+https://solvix-rho.vercel.app/
+
+⚙️ Backend API
+
+https://solvix-api-9p2r.onrender.com/
+
+📂 GitHub Repository
+
+https://github.com/PrabhakarSinghKshatriya/SOLVIX
+
+</div>
+
+⸻
 <div align="center">
 
 🚀 SOLVIX
