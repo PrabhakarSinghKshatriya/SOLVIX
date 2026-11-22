@@ -1,193 +1,204 @@
-🚀 SOLVIX – Hyperlocal Service Marketplace
+<div align="center">
 
-Connect. Solve. Get It Done.
+🚀 SOLVIX
 
-SOLVIX is a hyperlocal service marketplace designed to connect customers with skilled professionals in their nearby locations. Whether someone needs a plumber, electrician, mechanic, carpenter, tutor, photographer, or any other professional, SOLVIX makes finding and connecting with the right person simple and convenient.
+CONNECT. SOLVE. GET IT DONE.
 
-SOLVIX bridges the gap between people who need services and professionals who provide them through location-based matching, real-time request management, verified worker profiles, and a subscription-based business model.
+Your Local Needs. The Right Professionals. One Platform.
 
-🌐 Live Website: https://solvix-rho.vercel.app/
+A smart hyperlocal service marketplace connecting customers with skilled professionals through location-based discovery, intelligent matching, and seamless service management.
 
-⚙️ Backend API: https://solvix-api-9p2r.onrender.com/
-
-📂 GitHub Repository: https://github.com/PrabhakarSinghKshatriya/SOLVIX
+<br/>
+<br/>
+</div>
 
 ⸻
 
-✨ Key Features
+🌟 About SOLVIX
 
-👤 1. Customer Features
+SOLVIX is a modern, location-aware service marketplace built to simplify how people discover and connect with local service professionals.
 
-* User registration and secure login.
-* Find nearby service professionals.
-* Post service requests based on specific requirements.
-* Location-based professional matching.
-* View worker profiles, skills, experience, and ratings.
-* Track service request status.
-* Access assigned worker contact details.
-* View service progress.
-* Cancel requests when applicable.
+Finding a reliable electrician, plumber, mechanic, carpenter, tutor, photographer, or other skilled professional should not be complicated.
 
-🛠️ 2. Professional / Worker Features
+SOLVIX brings customers and professionals together through a unified digital platform where customers can post service requirements and nearby professionals can discover, accept, and complete those requests.
 
-* Worker registration and profile management.
-* Add profession, skills, experience, and bio.
-* Set service location and availability.
-* Receive nearby customer service requests.
-* Accept or reject service requests.
-* Update job status throughout the service process.
-* View completed work and profile information.
-* Subscription-based access to service opportunities.
+The platform combines location-based matching, professional profiles, request lifecycle management, secure authentication, subscription-based monetization, and administrative verification.
 
-📍 3. Location-Based Matching
+💡 Our Vision
 
-SOLVIX uses location-based matching to connect customers with relevant professionals.
+To create a smarter local service ecosystem where every customer can find the right professional and every skilled individual can discover meaningful work opportunities.
 
-* Detect current location.
-* Manual location support.
-* Geospatial worker search using MongoDB 2dsphere indexes.
-* Adjustable search radius.
-* Match professionals according to skills and availability.
-* Consider worker ratings and experience.
+⸻
 
-🔐 4. Aadhaar Verification System
+⚡ Why SOLVIX?
 
-To improve platform trust and professional accountability:
+Traditional Service Discovery	SOLVIX
+Difficult to find nearby professionals	Location-based professional discovery
+Limited information about workers	Detailed professional profiles
+Unorganized service requests	Structured request management
+Difficult to track service progress	Multiple service status updates
+Limited professional verification	Aadhaar verification workflow
+No centralized management	Dedicated admin dashboard
 
-* Workers can upload Aadhaar documents.
-* Support for document uploads.
-* Admin reviews submitted documents.
-* Admin can approve worker verification.
-* Verified professionals receive a verification status.
-* Service acceptance is restricted until required verification is completed after subscription payment.
+⸻
 
-💳 5. Subscription & Payment System
+✨ Core Features
 
-SOLVIX follows a subscription-based monetization model for professionals.
+👥 Customer Experience
 
-* Five free service opportunities for eligible workers.
-* Monthly subscription: ₹150.
-* Yearly subscription: ₹1,500.
-* Razorpay payment integration.
-* Payment verification and subscription management.
-* Subscription status tracking.
-* Aadhaar verification requirement after successful subscription payment.
+* Secure registration and authentication.
+* Post service requests with specific requirements.
+* Discover nearby professionals.
+* Search according to profession and location.
+* View worker skills, experience, ratings, and profiles.
+* Track request and service progress.
+* Access assigned professional contact details.
+* Manage service requests.
 
-🛡️ 6. Admin Dashboard
+🧑‍🔧 Professional Dashboard
 
-A dedicated administrative dashboard provides platform management capabilities.
+* Dedicated worker registration and login.
+* Professional profile creation and management.
+* Add skills, profession, experience, and bio.
+* Configure location and availability.
+* Receive nearby service requests.
+* Accept or reject incoming requests.
+* Update service progress.
+* Track completed work.
+* Manage subscription status.
 
-* Admin-only dashboard access.
-* View total registered users.
-* Manage customer and worker information.
-* View worker profiles and professional details.
-* Monitor completed jobs.
-* Review Aadhaar verification requests.
-* Manage worker verification status.
-* Monitor subscriptions and payments.
-* View platform statistics.
-* Manage platform notifications.
+📍 Smart Location-Based Matching
 
-🔔 7. Notifications & Request Management
+SOLVIX uses geospatial capabilities to improve local professional discovery.
+
+* Current location detection.
+* Manual location selection.
+* MongoDB 2dsphere geospatial indexing.
+* Configurable search radius.
+* Skill-based professional matching.
+* Availability-based filtering.
+* Rating and experience information.
+
+🛡️ Aadhaar Verification
+
+A dedicated verification workflow helps establish professional accountability.
+
+* Aadhaar document upload.
+* Document submission for admin review.
+* Admin-controlled verification.
+* Verification status management.
+* Verified professional identification.
+* Service acceptance restrictions until required verification is completed.
+
+💳 Subscription & Payments
+
+A monetization system designed for service professionals.
+
+Subscription	Price
+Free Opportunities	5
+Monthly Plan	₹150
+Yearly Plan	₹1,500
+
+Payment Features:
+
+* Razorpay integration.
+* Payment verification.
+* Subscription activation.
+* Payment status tracking.
+* Subscription management.
+* Post-payment verification workflow.
+
+🔔 Notifications & Real-Time Updates
 
 * Service request notifications.
-* Request acceptance and rejection.
-* Booking status updates.
-* Request lifecycle management.
-* Real-time communication support through WebSockets.
+* Request acceptance and rejection updates.
+* Booking status changes.
+* Real-time communication support.
+* WebSocket-based functionality.
 
-⭐ 8. Worker Reputation
+🛠️ Admin Control Center
 
-Worker profiles support professional credibility through ratings, experience, and completed-work information.
+A dedicated admin-only dashboard for managing the marketplace.
+
+* Total registered user statistics.
+* Customer and worker directories.
+* Worker profile inspection.
+* Completed work monitoring.
+* Aadhaar document verification.
+* Worker verification management.
+* Subscription and payment monitoring.
+* Administrative notifications.
+* Platform statistics.
 
 ⸻
 
 🔄 How SOLVIX Works
 
-       CUSTOMER NEED
-             |
-             ▼
-       POST A REQUEST
-             |
-             ▼
-       SELECT LOCATION
-             |
-             ▼
-       SKILL-BASED MATCHING
-             |
-             ▼
-       FIND NEARBY WORKERS
-             |
-             ▼
-       CONNECT WITH WORKER
-             |
-             ▼
-       REQUEST ACCEPTANCE
-             |
-             ▼
-       BOOKING CONFIRMATION
-             |
-             ▼
-       SERVICE IN PROGRESS
-             |
-             ▼
-       SERVICE COMPLETED
-             |
-             ▼
-       REVIEW & RATING
+<div align="center">
+flowchart TD
+    A["👤 Customer"] --> B["📝 Post Service Request"]
+    B --> C["📍 Select Location"]
+    C --> D["🎯 Skill & Location Matching"]
+    D --> E["🧑‍🔧 Find Nearby Professionals"]
+    E --> F["📨 Send Service Request"]
+    F --> G["✅ Worker Accepts Request"]
+    G --> H["📅 Booking Confirmation"]
+    H --> I["🚗 Service In Progress"]
+    I --> J["🎉 Work Completed"]
+    J --> K["⭐ Customer Feedback"]
+</div>
 
 ⸻
 
 🧰 Technology Stack
 
-Frontend
+<div align="center">
 
-* React.js
-* Vite
-* JavaScript
-* HTML5
-* CSS3
-* Axios
-* React Router
-* Google OAuth
+Frontend
 
 Backend
 
-* Python 3.11
-* FastAPI
-* REST APIs
-* WebSockets
-* Pydantic
+Database & Infrastructure
 
-Database
+Integrations & Deployment
 
-* MongoDB
-* MongoDB Geospatial Indexing (2dsphere)
-
-Authentication & Security
-
-* JWT-based authentication
-* OTP-based authentication
-* Google OAuth
-* Role-based access control
-* Admin authorization
-* Aadhaar document verification
-
-Payment Integration
-
-* Razorpay
-
-Deployment & Development
-
-* Git & GitHub
-* Docker
-* Docker Compose
-* Vercel (Frontend)
-* Render (Backend)
+</div>
 
 ⸻
 
-🏗️ Project Architecture
+🏗️ System Architecture
+
+                    SOLVIX PLATFORM
+                           |
+             +-------------+-------------+
+             |             |             |
+          CUSTOMER       WORKER         ADMIN
+             |             |             |
+             +-------------+-------------+
+                           |
+                    REACT FRONTEND
+                           |
+                      AXIOS / API
+                           |
+                    FASTAPI BACKEND
+                           |
+       +-------------------+-------------------+
+       |           |           |               |
+      AUTH       WORKERS     REQUESTS       ADMIN
+       |           |           |               |
+       +-----------+-----------+---------------+
+                           |
+                     MONGODB DATABASE
+                           |
+       +-------------------+-------------------+
+       |                   |                   |
+   GEOLOCATION         PAYMENTS            NOTIFICATIONS
+       |                   |                   |
+   2dsphere             RAZORPAY            WEBSOCKET
+
+⸻
+
+📂 Project Structure
 
 SOLVIX/
 │
@@ -227,11 +238,11 @@ SOLVIX/
 ├── docker-compose.yml
 └── README.md
 
-Note: Directory structure is representative of the project’s architecture.
+Note: This is a representative architecture; actual folders may differ.
 
 ⸻
 
-⚙️ Installation & Setup
+⚙️ Getting Started
 
 Prerequisites
 
@@ -244,17 +255,17 @@ Make sure you have installed:
 * Git
 * Docker (optional)
 
-1. Clone Repository
+1. Clone the Repository
 
 git clone https://github.com/PrabhakarSinghKshatriya/SOLVIX.git
 cd SOLVIX
 
-2. Backend Setup
+2. Backend Installation
 
 cd backend
 python -m venv venv
 
-Activate virtual environment:
+Activate the environment:
 
 macOS / Linux
 
@@ -268,118 +279,123 @@ Install dependencies:
 
 pip install -r requirements.txt
 
-Configure the required backend environment variables using your deployment configuration.
+Configure the required environment variables for MongoDB, authentication, payment integration, and frontend connectivity.
 
-Start backend:
+Run the backend:
 
 uvicorn app.main:app --reload
 
-Backend runs at:
+Backend:
 
 http://localhost:8000
 
-API Documentation:
+Interactive API Documentation:
 
 http://localhost:8000/docs
 
-3. Frontend Setup
+3. Frontend Installation
 
 Open another terminal:
 
-cd SOLVIX/frontend
-
-Install dependencies:
-
+cd frontend
 npm install
 
 Start development server:
 
 npm run dev
 
-Build production version:
+Production build:
 
 npm run build
 
-4. Docker Setup
+4. Run with Docker
 
 From the project root:
 
 docker compose up --build
 
-To stop containers:
+Stop containers:
 
 docker compose down
 
 ⸻
 
-🌍 Deployment
+☁️ Deployment
 
-SOLVIX uses cloud-based deployment:
+SOLVIX is deployed using cloud infrastructure.
 
-Component	Platform
-Frontend	Vercel
-Backend	Render
+Service	Platform
+Frontend Hosting	Vercel
+Backend Hosting	Render
 Database	MongoDB
-Source Code	GitHub
+Version Control	GitHub
 
-Live Application:
+<div align="center">
 
-https://solvix-rho.vercel.app/
+🌐 Explore SOLVIX
 
-Backend API:
-
-https://solvix-api-9p2r.onrender.com/
+</div>
 
 ⸻
 
-🎯 Project Objectives
+🔒 Security & Reliability
 
-SOLVIX aims to:
+SOLVIX incorporates several important platform-level safeguards:
 
-* Make local services easily accessible.
-* Help skilled professionals discover work opportunities.
-* Reduce the time required to find reliable service providers.
-* Promote digital opportunities for local workers.
-* Build a location-aware service ecosystem.
-* Establish a scalable marketplace connecting customers and professionals.
-
-⸻
-
-🚀 Future Scope
-
-Potential future enhancements include:
-
-* Advanced AI-based professional recommendations.
-* Enhanced real-time tracking.
-* Integrated in-app chat.
-* Advanced analytics and business intelligence.
-* Automated worker performance insights.
-* Expanded payment and payout capabilities.
-* Improved customer feedback and reputation management.
-* Expansion into multiple cities and regions.
+* Role-based access control.
+* Protected administrative functionality.
+* Authentication and authorization.
+* Payment verification workflows.
+* Worker document verification.
+* Database indexing for efficient queries.
+* Structured API architecture.
+* Backend test coverage.
 
 ⸻
 
-👨‍💻 Developer
+🚀 Future Roadmap
+
+SOLVIX is designed with future expansion in mind.
+
+Potential improvements include:
+
+* 🤖 AI-powered professional recommendations.
+* 💬 Integrated customer-worker chat.
+* 📍 Advanced live service tracking.
+* ⭐ Enhanced ratings and review analytics.
+* 📊 Advanced business intelligence dashboard.
+* 💰 Professional payout management.
+* 🌍 Expansion into additional cities.
+* 📱 Dedicated Android and iOS applications.
+
+⸻
+
+👨‍💻 About the Developer
+
+<div align="center">
 
 Prabhakar Singh Kshatriya
 
-Full Stack Developer | Python | React.js | FastAPI | MongoDB
+Full Stack Developer | Python | React | FastAPI | MongoDB
 
-GitHub: https://github.com/PrabhakarSinghKshatriya
+Building practical technology solutions with a focus on real-world problems, scalable architecture, and user experience.
 
-⸻
-
-📜 License
-
-This project is currently maintained as an independent development project.
-
-For permissions regarding reuse, modification, or commercial distribution, please contact the developer.
+</div>
 
 ⸻
 
-<p align="center">
-  <b>SOLVIX – Connect. Solve. Get It Done.</b>
-  <br/>
-  Making local services smarter, faster, and more accessible.
-</p>
+<div align="center">
+
+💙 SOLVIX
+
+Connect. Solve. Get It Done.
+
+Empowering Local Professionals. Simplifying Everyday Services.
+
+<br/>
+
+⭐ If you find this project interesting, consider giving the repository a star!
+
+Built with passion by Prabhakar Singh Kshatriya.
+
+</div>
