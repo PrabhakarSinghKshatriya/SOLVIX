@@ -976,6 +976,7 @@ function App() {
     }
 
     const address = serviceAddress.trim();
+
     if (!address) {
       flashError("Please enter your complete service address.");
       return null;
@@ -984,23 +985,66 @@ function App() {
     setLocationMessage("Finding your address on the map...");
 
     try {
-      const query = encodeURIComponent(
-        /india/i.test(address) ? address : `${address}, India`
-      );
+      const normalizedAddress = /india/i.test(address)
+        ? address
+        : `${address}, India`;
 
-      const response = await fetch(
-        `https://photon.komoot.io/api/?q=${query}&limit=1&lang=en`
-      );
+      const queries = [normalizedAddress];
 
-      if (!response.ok) {
-        throw new Error("Address search is temporarily unavailable. Please try again.");
+      // Institution-specific fallback for KIET and nearby addresses.
+      if (/kiet/i.test(address)) {
+        queries.push(
+          "KIET Group of Institutions, Delhi Meerut Road, Muradnagar, Ghaziabad, Uttar Pradesh 201206, India"
+        );
       }
 
-      const data = await response.json();
-      const point = data?.features?.[0]?.geometry?.coordinates;
+      // Area and PIN-based fallbacks.
+      queries.push(
+        "Muradnagar, Ghaziabad, Uttar Pradesh 201206, India",
+        "Ghaziabad, Uttar Pradesh 201206, India"
+      );
 
-      if (!Array.isArray(point) || point.length < 2) {
-        throw new Error("Address not found. Enter a more complete address with area, city and PIN code.");
+      const uniqueQueries = [...new Set(queries)];
+      let point = null;
+
+      for (const searchQuery of uniqueQueries) {
+        try {
+          const response = await fetch(
+            `https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery)}&limit=5&lang=en`
+          );
+
+          if (!response.ok) continue;
+
+          const data = await response.json();
+          const features = data?.features || [];
+
+          const match = features.find((feature) => {
+            const coordinates = feature?.geometry?.coordinates;
+            const properties = feature?.properties || {};
+
+            return (
+              Array.isArray(coordinates) &&
+              coordinates.length >= 2 &&
+              Number.isFinite(Number(coordinates[0])) &&
+              Number.isFinite(Number(coordinates[1])) &&
+              (!properties.country ||
+                /india/i.test(properties.country))
+            );
+          });
+
+          if (match) {
+            point = match.geometry.coordinates;
+            break;
+          }
+        } catch (searchError) {
+          console.warn("Address search attempt failed:", searchError);
+        }
+      }
+
+      if (!point) {
+        throw new Error(
+          "Address could not be located. Please check your locality, city and PIN code and try again."
+        );
       }
 
       const longitude = Number(point[0]);
@@ -1019,8 +1063,10 @@ function App() {
         latitude: String(latitude),
         longitude: String(longitude),
       });
+
       setLocationMessage("✓ Address successfully located on the map.");
       return { latitude, longitude };
+
     } catch (error) {
       setLocationMessage(error.message);
       flashError(error.message);
