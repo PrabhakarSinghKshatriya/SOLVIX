@@ -306,6 +306,7 @@ function App() {
   });
 
   const [locationMessage, setLocationMessage] = useState("");
+  const [locationMode, setLocationMode] = useState("detect");
   const [serviceAddress, setServiceAddress] = useState("");
   const [radius, setRadius] = useState("10");
   const [selectedService, setSelectedService] = useState("Plumber");
@@ -929,21 +930,41 @@ function App() {
     );
   };
 
+  const chooseLocationMode = (mode) => {
+    setLocationMode(mode);
+    setCoords({ latitude: "", longitude: "" });
+    setServiceAddress("");
+    setLocationMessage("");
+
+    if (mode === "detect") {
+      window.setTimeout(() => getCoordinates(), 0);
+    }
+  };
+
   const validCoordinates = () => {
     const latitude = Number(coords.latitude);
     const longitude = Number(coords.longitude);
+
+    if (
+      locationMode === "manual" && !serviceAddress.trim()
+    ) {
+      flashError("Please enter your complete service address.");
+      return null;
+    }
 
     if (
       coords.latitude.trim() === "" ||
       coords.longitude.trim() === "" ||
       !Number.isFinite(latitude) ||
       !Number.isFinite(longitude) ||
-      latitude < -90 ||
-      latitude > 90 ||
-      longitude < -180 ||
-      longitude > 180
+      latitude < -90 || latitude > 90 ||
+      longitude < -180 || longitude > 180
     ) {
-      flashError("Please enter valid latitude and longitude, or detect your location.");
+      flashError(
+        locationMode === "detect"
+          ? "Please detect your current location."
+          : "Please enter valid manual latitude and longitude."
+      );
       return null;
     }
 
@@ -1026,7 +1047,7 @@ function App() {
       await api.post("/api/requests", {
         service: booking.service,
         description: booking.description.trim() || undefined,
-        service_address: serviceAddress.trim() || undefined,
+        service_address: locationMode === "manual" ? serviceAddress.trim() : undefined,
         ...location,
       });
 
@@ -2065,61 +2086,129 @@ function App() {
   );
 
   const LocationPanel = () => (
-    <section
-      id="service-location-panel"
-      className="panel location-panel"
-    >
+    <section id="service-location-panel" className="panel location-panel">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">LOCATION SETTINGS</span>
           <h3>Where do you need help?</h3>
-          <p>Use your current location or enter coordinates manually.</p>
+          <p>Choose ONE method to share your service location.</p>
         </div>
         <span className="location-icon">📍</span>
       </div>
 
-      <button className="btn btn-outline geo-button" onClick={getCoordinates}>
-        ◎ Detect my location
-      </button>
+      <div className="location-choice-grid">
+        <button
+          type="button"
+          className={`location-choice-card ${locationMode === "detect" ? "active" : ""}`}
+          onClick={() => chooseLocationMode("detect")}
+          aria-pressed={locationMode === "detect"}
+        >
+          <span className="location-choice-icon">◎</span>
+          <strong>Detect My Location</strong>
+          <span>Automatically use your device's current GPS location.</span>
+          <span className="location-choice-action">
+            {locationMode === "detect" ? "✓ Selected" : "Use current location"}
+          </span>
+        </button>
 
-      {locationMessage && <p className="helper-text">{locationMessage}</p>}
+        <div className="location-or-divider">
+          <span>OR</span>
+        </div>
 
-      <label className="field-label">
-        Complete Service Address
-        <textarea
-          rows="3"
-          maxLength="500"
-          placeholder="House/Flat No., Street, Area, City, State, PIN Code"
-          value={serviceAddress}
-          onChange={(e) => setServiceAddress(e.target.value)}
-        />
-        <small className="helper-text">
-          Enter the exact address where you need the service.
-        </small>
-      </label>
-
-      <div className="form-grid two-columns">
-        <label>
-          Latitude
-          <input
-            type="number"
-            step="any"
-            placeholder="e.g. 28.6139"
-            value={coords.latitude}
-            onChange={(e) => setCoords((old) => ({ ...old, latitude: e.target.value }))}
-          />
-        </label>
-        <label>
-          Longitude
-          <input
-            type="number"
-            step="any"
-            placeholder="e.g. 77.2090"
-            value={coords.longitude}
-            onChange={(e) => setCoords((old) => ({ ...old, longitude: e.target.value }))}
-          />
-        </label>
+        <button
+          type="button"
+          className={`location-choice-card ${locationMode === "manual" ? "active" : ""}`}
+          onClick={() => chooseLocationMode("manual")}
+          aria-pressed={locationMode === "manual"}
+        >
+          <span className="location-choice-icon">⌖</span>
+          <strong>Enter Location Manually</strong>
+          <span>Provide your service address and map coordinates yourself.</span>
+          <span className="location-choice-action">
+            {locationMode === "manual" ? "✓ Selected" : "Enter address manually"}
+          </span>
+        </button>
       </div>
+
+      {locationMode === "detect" && (
+        <div className="location-mode-content">
+          <div className="location-mode-heading">
+            <strong>📍 Current location</strong>
+            <span>GPS detection selected</span>
+          </div>
+          {locationMessage && (
+            <p className="helper-text" role="status">{locationMessage}</p>
+          )}
+          {coords.latitude && coords.longitude && (
+            <p className="helper-text">
+              ✓ Location detected: {Number(coords.latitude).toFixed(6)},{" "}
+              {Number(coords.longitude).toFixed(6)}
+            </p>
+          )}
+          <button
+            type="button"
+            className="btn btn-outline geo-button"
+            onClick={getCoordinates}
+          >
+            ◎ Detect Again
+          </button>
+        </div>
+      )}
+
+      {locationMode === "manual" && (
+        <div className="location-mode-content">
+          <div className="location-mode-heading">
+            <strong>✎ Manual service location</strong>
+            <span>Enter your details below</span>
+          </div>
+
+          <label className="field-label">
+            Complete Service Address
+            <textarea
+              rows="3"
+              maxLength="500"
+              required
+              placeholder="House/Flat No., Street, Area, City, State, PIN Code"
+              value={serviceAddress}
+              onChange={(e) => setServiceAddress(e.target.value)}
+            />
+          </label>
+
+          <div className="form-grid two-columns">
+            <label>
+              Latitude
+              <input
+                type="number"
+                step="any"
+                min="-90"
+                max="90"
+                placeholder="e.g. 28.6139"
+                value={coords.latitude}
+                onChange={(e) =>
+                  setCoords((old) => ({ ...old, latitude: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              Longitude
+              <input
+                type="number"
+                step="any"
+                min="-180"
+                max="180"
+                placeholder="e.g. 77.2090"
+                value={coords.longitude}
+                onChange={(e) =>
+                  setCoords((old) => ({ ...old, longitude: e.target.value }))
+                }
+              />
+            </label>
+          </div>
+          <p className="helper-text">
+            Enter the coordinates of the same address you provided above.
+          </p>
+        </div>
+      )}
 
       <label className="field-label">
         Search radius
