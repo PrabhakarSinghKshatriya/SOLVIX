@@ -90,6 +90,7 @@ async def create_service_request(
         description=data.description,
         latitude=data.latitude,
         longitude=data.longitude,
+        service_address=data.service_address,
     )
 
     # SOLVIX_ADMIN_NEW_SERVICE_REQUEST_NOTIFICATION_V1

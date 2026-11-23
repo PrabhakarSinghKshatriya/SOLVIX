@@ -29,6 +29,11 @@ class CreateServiceRequest(BaseModel):
         max_length=2000,
     )
 
+    service_address: Optional[str] = Field(
+        default=None,
+        max_length=500,
+    )
+
     latitude: float = Field(
         ...,
         ge=-90,

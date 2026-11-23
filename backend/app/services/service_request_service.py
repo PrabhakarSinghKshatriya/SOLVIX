@@ -19,6 +19,7 @@ class ServiceRequestService:
         description: str | None,
         latitude: float,
         longitude: float,
+        service_address: str | None = None,
     ) -> dict:
 
         document = ServiceRequestModel.create_document(
@@ -27,6 +28,7 @@ class ServiceRequestService:
             description=description,
             latitude=latitude,
             longitude=longitude,
+            service_address=service_address,
         )
 
         result = self.requests.insert_one(

@@ -1,11 +1,8 @@
 from typing import Literal, Optional
-
 from pydantic import BaseModel, EmailStr, Field, field_validator
-
-
 UserRole = Literal["customer", "worker"]
 
-
+ 
 class RegisterRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
@@ -14,7 +11,7 @@ class RegisterRequest(BaseModel):
     role: UserRole
 
     @field_validator("name")
-    @classmethod
+    @classmethod 
     def validate_name(cls, value: str) -> str:
         value = value.strip()
 

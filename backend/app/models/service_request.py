@@ -11,6 +11,7 @@ class ServiceRequestModel:
         description: str | None,
         latitude: float,
         longitude: float,
+        service_address: str | None = None,
     ) -> dict:
 
         now = datetime.now(timezone.utc)
@@ -23,6 +24,12 @@ class ServiceRequestModel:
             "description": (
                 description.strip()
                 if description
+                else None
+            ),
+
+            "service_address": (
+                service_address.strip()
+                if service_address
                 else None
             ),
 
@@ -63,6 +70,7 @@ class ServiceRequestModel:
             "description": document.get(
                 "description"
             ),
+            "service_address": document.get("service_address"),
             "location": document["location"],
             "status": document.get(
                 "status",
