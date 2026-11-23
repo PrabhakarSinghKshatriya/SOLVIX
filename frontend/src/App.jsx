@@ -306,6 +306,7 @@ function App() {
   });
 
   const [locationMessage, setLocationMessage] = useState("");
+  const [serviceAddress, setServiceAddress] = useState("");
   const [radius, setRadius] = useState("10");
   const [selectedService, setSelectedService] = useState("Plumber");
   const [workers, setWorkers] = useState([]);
@@ -1025,10 +1026,12 @@ function App() {
       await api.post("/api/requests", {
         service: booking.service,
         description: booking.description.trim() || undefined,
+        service_address: serviceAddress.trim() || undefined,
         ...location,
       });
 
       setBooking((old) => ({ ...old, description: "" }));
+      setServiceAddress("");
       flashNotice("Your service request has been created successfully.");
       await loadCustomerRequests();
     } catch (err) {
@@ -2081,6 +2084,20 @@ function App() {
 
       {locationMessage && <p className="helper-text">{locationMessage}</p>}
 
+      <label className="field-label">
+        Complete Service Address
+        <textarea
+          rows="3"
+          maxLength="500"
+          placeholder="House/Flat No., Street, Area, City, State, PIN Code"
+          value={serviceAddress}
+          onChange={(e) => setServiceAddress(e.target.value)}
+        />
+        <small className="helper-text">
+          Enter the exact address where you need the service.
+        </small>
+      </label>
+
       <div className="form-grid two-columns">
         <label>
           Latitude
@@ -2459,22 +2476,34 @@ function App() {
           {request.created_at && (
             <span>📅 {formatIST(request.created_at)}</span>
           )}
-          {requestLocation && (
-            <>
-              <span>
-                📍 {requestLocation.latitude.toFixed(6)},{" "}
-                {requestLocation.longitude.toFixed(6)}
-              </span>
-              <a
-                className="text-button"
-                href={`https://www.google.com/maps/dir/?api=1&destination=${requestLocation.latitude},${requestLocation.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Open location in Google Maps ↗
-              </a>
-            </>
+
+          {request.service_address && (
+            <span className="request-service-address">
+              🏠 Service Address: {request.service_address}
+            </span>
           )}
+
+          {requestLocation && (
+            <span>
+              📍 {requestLocation.latitude.toFixed(6)},{" "}
+              {requestLocation.longitude.toFixed(6)}
+            </span>
+          )}
+
+          {(request.service_address || requestLocation) && (
+            <a
+              className="text-button"
+              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                request.service_address?.trim() ||
+                `${requestLocation.latitude},${requestLocation.longitude}`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open service location in Google Maps ↗
+            </a>
+          )}
+
           {assignedWorkerId && <span>🧰 Worker assigned</span>}
         </div>
 
