@@ -941,6 +941,64 @@ function App() {
     }
   };
 
+  const getCustomerCoordinates = async () => {
+    if (locationMode === "detect") {
+      return validCoordinates();
+    }
+
+    const address = serviceAddress.trim();
+    if (!address) {
+      flashError("Please enter your complete service address.");
+      return null;
+    }
+
+    setLocationMessage("Finding your address on the map...");
+
+    try {
+      const query = encodeURIComponent(
+        /india/i.test(address) ? address : `${address}, India`
+      );
+
+      const response = await fetch(
+        `https://photon.komoot.io/api/?q=${query}&limit=1&lang=en`
+      );
+
+      if (!response.ok) {
+        throw new Error("Address search is temporarily unavailable. Please try again.");
+      }
+
+      const data = await response.json();
+      const point = data?.features?.[0]?.geometry?.coordinates;
+
+      if (!Array.isArray(point) || point.length < 2) {
+        throw new Error("Address not found. Enter a more complete address with area, city and PIN code.");
+      }
+
+      const longitude = Number(point[0]);
+      const latitude = Number(point[1]);
+
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        latitude < -90 || latitude > 90 ||
+        longitude < -180 || longitude > 180
+      ) {
+        throw new Error("Could not locate this address. Please try again.");
+      }
+
+      setCoords({
+        latitude: String(latitude),
+        longitude: String(longitude),
+      });
+      setLocationMessage("✓ Address successfully located on the map.");
+      return { latitude, longitude };
+    } catch (error) {
+      setLocationMessage(error.message);
+      flashError(error.message);
+      return null;
+    }
+  };
+
   const validCoordinates = () => {
     const latitude = Number(coords.latitude);
     const longitude = Number(coords.longitude);
@@ -979,7 +1037,7 @@ function App() {
       return;
     }
 
-    const location = validCoordinates();
+    const location = await getCustomerCoordinates();
     if (!location) return;
 
     setLoading(true);
@@ -1038,7 +1096,7 @@ function App() {
       return;
     }
 
-    const location = validCoordinates();
+    const location = await getCustomerCoordinates();
     if (!location) return;
 
     setLoading(true);
@@ -2123,7 +2181,7 @@ function App() {
         >
           <span className="location-choice-icon">⌖</span>
           <strong>Enter Location Manually</strong>
-          <span>Provide your service address and map coordinates yourself.</span>
+          <span>Enter your complete address. SOLVIX automatically finds it on the map.</span>
           <span className="location-choice-action">
             {locationMode === "manual" ? "✓ Selected" : "Enter address manually"}
           </span>
@@ -2158,8 +2216,8 @@ function App() {
       {locationMode === "manual" && (
         <div className="location-mode-content">
           <div className="location-mode-heading">
-            <strong>✎ Manual service location</strong>
-            <span>Enter your details below</span>
+            <strong>✎ Enter your service address</strong>
+            <span>No coordinates needed. SOLVIX finds your location automatically.</span>
           </div>
 
           <label className="field-label">
@@ -2170,43 +2228,30 @@ function App() {
               required
               placeholder="House/Flat No., Street, Area, City, State, PIN Code"
               value={serviceAddress}
-              onChange={(e) => setServiceAddress(e.target.value)}
+              onChange={(e) => {
+                setServiceAddress(e.target.value);
+                setCoords({ latitude: "", longitude: "" });
+                setLocationMessage("");
+              }}
             />
           </label>
 
-          <div className="form-grid two-columns">
-            <label>
-              Latitude
-              <input
-                type="number"
-                step="any"
-                min="-90"
-                max="90"
-                placeholder="e.g. 28.6139"
-                value={coords.latitude}
-                onChange={(e) =>
-                  setCoords((old) => ({ ...old, latitude: e.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Longitude
-              <input
-                type="number"
-                step="any"
-                min="-180"
-                max="180"
-                placeholder="e.g. 77.2090"
-                value={coords.longitude}
-                onChange={(e) =>
-                  setCoords((old) => ({ ...old, longitude: e.target.value }))
-                }
-              />
-            </label>
-          </div>
-          <p className="helper-text">
-            Enter the coordinates of the same address you provided above.
-          </p>
+          {locationMessage && (
+            <p className="helper-text" role="status">{locationMessage}</p>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-primary geo-button"
+            onClick={getCustomerCoordinates}
+            disabled={!serviceAddress.trim()}
+          >
+            ⌖ Find My Address
+          </button>
+
+          {coords.latitude && coords.longitude && (
+            <p className="helper-text">✓ Address located and ready to use.</p>
+          )}
         </div>
       )}
 
