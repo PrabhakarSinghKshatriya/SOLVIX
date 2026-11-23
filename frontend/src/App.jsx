@@ -308,6 +308,35 @@ function App() {
   const [locationMessage, setLocationMessage] = useState("");
   const [locationMode, setLocationMode] = useState("detect");
   const [serviceAddress, setServiceAddress] = useState("");
+  const [serviceAddressParts, setServiceAddressParts] = useState({
+    house: "",
+    street: "",
+    area: "",
+    landmark: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
+
+  const updateServiceAddress = (field, value) => {
+    const updated = { ...serviceAddressParts, [field]: value };
+    setServiceAddressParts(updated);
+
+    const completeAddress = [
+      updated.house,
+      updated.street,
+      updated.area,
+      updated.landmark,
+      updated.city,
+      updated.state,
+      updated.pincode,
+      "India",
+    ].filter(Boolean).join(", ");
+
+    setServiceAddress(completeAddress);
+    setCoords({ latitude: "", longitude: "" });
+    setLocationMessage("");
+  };
   const [radius, setRadius] = useState("10");
   const [selectedService, setSelectedService] = useState("Plumber");
   const [workers, setWorkers] = useState([]);
@@ -2220,21 +2249,99 @@ function App() {
             <span>No coordinates needed. SOLVIX finds your location automatically.</span>
           </div>
 
-          <label className="field-label">
-            Complete Service Address
-            <textarea
-              rows="3"
-              maxLength="500"
-              required
-              placeholder="House/Flat No., Street, Area, City, State, PIN Code"
-              value={serviceAddress}
-              onChange={(e) => {
-                setServiceAddress(e.target.value);
-                setCoords({ latitude: "", longitude: "" });
-                setLocationMessage("");
-              }}
-            />
-          </label>
+          <div className="form-grid two-columns customer-address-grid">
+            <label className="field-label">
+              House / Flat Number *
+              <input
+                type="text"
+                maxLength="100"
+                required
+                placeholder="e.g. House No. 12, Flat 302"
+                value={serviceAddressParts.house}
+                onChange={(e) => updateServiceAddress("house", e.target.value)}
+              />
+            </label>
+
+            <label className="field-label">
+              Building / Street *
+              <input
+                type="text"
+                maxLength="150"
+                required
+                placeholder="e.g. Tower A, Main Road"
+                value={serviceAddressParts.street}
+                onChange={(e) => updateServiceAddress("street", e.target.value)}
+              />
+            </label>
+
+            <label className="field-label">
+              Locality / Area *
+              <input
+                type="text"
+                maxLength="150"
+                required
+                placeholder="e.g. Sector 62"
+                value={serviceAddressParts.area}
+                onChange={(e) => updateServiceAddress("area", e.target.value)}
+              />
+            </label>
+
+            <label className="field-label">
+              Landmark
+              <input
+                type="text"
+                maxLength="150"
+                placeholder="Nearby school, metro station etc. (Optional)"
+                value={serviceAddressParts.landmark}
+                onChange={(e) => updateServiceAddress("landmark", e.target.value)}
+              />
+            </label>
+
+            <label className="field-label">
+              City *
+              <input
+                type="text"
+                maxLength="100"
+                required
+                placeholder="e.g. Noida"
+                value={serviceAddressParts.city}
+                onChange={(e) => updateServiceAddress("city", e.target.value)}
+              />
+            </label>
+
+            <label className="field-label">
+              State *
+              <input
+                type="text"
+                maxLength="100"
+                required
+                placeholder="e.g. Uttar Pradesh"
+                value={serviceAddressParts.state}
+                onChange={(e) => updateServiceAddress("state", e.target.value)}
+              />
+            </label>
+
+            <label className="field-label">
+              PIN Code *
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength="6"
+                pattern="[0-9]{6}"
+                required
+                placeholder="6-digit PIN code"
+                value={serviceAddressParts.pincode}
+                onChange={(e) =>
+                  updateServiceAddress("pincode", e.target.value.replace(/\\D/g, "").slice(0, 6))
+                }
+              />
+            </label>
+          </div>
+
+          <p className="helper-text">
+            Enter your address details. SOLVIX will automatically combine them
+            and find the location on the map. No coordinates required.
+          </p>
 
           {locationMessage && (
             <p className="helper-text" role="status">{locationMessage}</p>
@@ -2244,7 +2351,14 @@ function App() {
             type="button"
             className="btn btn-primary geo-button"
             onClick={getCustomerCoordinates}
-            disabled={!serviceAddress.trim()}
+            disabled={
+              !serviceAddressParts.house.trim() ||
+              !serviceAddressParts.street.trim() ||
+              !serviceAddressParts.area.trim() ||
+              !serviceAddressParts.city.trim() ||
+              !serviceAddressParts.state.trim() ||
+              !/^[0-9]{6}$/.test(serviceAddressParts.pincode)
+            }
           >
             ⌖ Find My Address
           </button>
